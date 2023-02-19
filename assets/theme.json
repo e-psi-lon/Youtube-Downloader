@@ -1,0 +1,47 @@
+{
+    "label":
+    {
+        "font":
+         {
+             "name": "arial",
+             "size": "12",
+             "bold": "0",
+             "italic": "0"
+         },
+        "misc":
+        {
+            "text_horiz_alignment": "left"
+        }
+    },
+    "drop_down_menu":
+    {
+        "misc":{
+            "shape": "rounded_rectangle",
+            "shape_corner_radius": "10"
+        }
+    },
+    "button":
+    {
+        "misc":
+        {
+            "shape": "rounded_rectangle",
+            "shape_corner_radius": "10"
+        }
+    },
+    "text_box":
+    {
+        "misc":
+        {
+            "shape": "rounded_rectangle",
+            "shape_corner_radius": "10"
+        }
+    },
+    "text_entry_line":
+    {
+        "misc":
+        {
+            "shape": "rounded_rectangle",
+            "shape_corner_radius": "10"
+        }
+    }
+}
