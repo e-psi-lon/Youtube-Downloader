@@ -91,6 +91,12 @@ if int(str(sys.version_info[0]) + str(sys.version_info[1])) == 311:
                 os.startfile(path)
         except Exception as error:
             messagebox.showerror('Error', f'An error occurred: {error}')
+            relative = progress_.relative_rect
+            progress_.kill()
+            window.fill((54, 57, 63), pygame.Rect(relative.left, relative.top, relative.width, relative.height))
+            progress_ = pygame_gui.elements.UILabel(
+                relative_rect=pygame.Rect(relative.left, relative.top, relative.width, relative.height),
+                text='Download failed', manager=manager)
         root.destroy()
 
 
