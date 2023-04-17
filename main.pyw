@@ -130,6 +130,8 @@ if int(str(sys.version_info[0]) + str(sys.version_info[1])) == 311:
                 os.remove(f'./cache/{video.title}.mp4')
             else:
                 file.download(path)
+            root = tk.Tk()
+            root.withdraw()
             if messagebox.askyesno('Download finished',
                                    'The video has been downloaded, do you want to open the folder?'):
                 os.startfile(path)
