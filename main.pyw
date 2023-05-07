@@ -42,31 +42,33 @@ if int(str(sys.version_info[0]) + str(sys.version_info[1])) == 311:
     window.fill(COLOR)
     manager = pygame_gui.UIManager(SCREENSIZE, 'assets/theme.json')
     font = pygame.font.SysFont('Arial', 20)
+
     if not os.path.exists('./cache'):
         os.mkdir('./cache')
 
+    class CustomUILabel(pygame_gui.elements.UILabel):
+        def __init__(self, window: pygame.Surface, background_color: tuple[int, int, int], *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.window = window
+            self.background_color = background_color
 
-    def change_image_of_ui_image(ui_image: pygame_gui.elements.UIImage, image: pygame.Surface | pygame.SurfaceType):
-        """Change the image of an ui_image"""
-        relative = ui_image.relative_rect
-        ui_image.kill()
-        window.fill(COLOR, pygame.Rect(relative.left, relative.top, relative.width, relative.height))
-        new_ui_image = pygame_gui.elements.UIImage(
-            relative_rect=pygame.Rect(relative.left, relative.top, relative.width, relative.height),
-            image_surface=image, manager=manager)
-        return new_ui_image
+        def change_text(self, text: str):
+            relative = self.relative_rect
+            self.window.fill(self.background_color, pygame.Rect(relative.left, relative.top, relative.width, relative.height))
+            self.text = text
+            self.rebuild()
 
+    class CustomUIImage(pygame_gui.elements.UIImage):
+        def __init__(self, window: pygame.Surface, background_color: tuple[int, int, int], *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.window = window
+            self.background_color = background_color
 
-    def change_text_of_label(label: pygame_gui.elements.UILabel, text: str):
-        """Change the text of a label"""
-        relative = label.relative_rect
-        label.kill()
-        window.fill(COLOR, pygame.Rect(relative.left, relative.top, relative.width, relative.height))
-        new_label = pygame_gui.elements.UILabel(
-            relative_rect=pygame.Rect(relative.left, relative.top, relative.width, relative.height),
-            text=text, manager=manager)
-        return new_label
-
+        def change_image(self, image: pygame.Surface | pygame.SurfaceType):
+            relative = self.relative_rect
+            self.window.fill(self.background_color, pygame.Rect(relative.left, relative.top, relative.width, relative.height))
+            self.image = image
+            self.rebuild()
 
     def choose_directory():
         """Choose the directory"""
@@ -85,16 +87,16 @@ if int(str(sys.version_info[0]) + str(sys.version_info[1])) == 311:
         try:
             progress.visible = True
             progress.set_current_progress(0)
-            progress_ = change_text_of_label(progress_, 'Downloading...')
+            progress_.change_text('Downloading...')
             video = YouTube(url_entry.get_text(),
                             on_progress_callback=lambda stream, chunk, bytes_remaining: progress.set_current_progress(
-                                100 - (bytes_remaining / stream.filesize * 100)))
+                                100 - (bytes_remaining / stream.filesize * 100)), use_oauth=True, allow_oauth_cache=True)
             file = video.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
             if download_format != 'mp4':
                 file.download('./cache')
                 video_ = VideoFileClip(f'./cache/{video.title}.mp4')
                 progress.set_current_progress(0)
-                progress_ = change_text_of_label(progress_, 'Converting...')
+                progress_.change_text('Converting...')
 
                 class Logger(ProgressBarLogger):
                     def __init__(self, input_video: VideoFileClip, init_state=None, bars=None, ignored_bars=None,
@@ -109,16 +111,15 @@ if int(str(sys.version_info[0]) + str(sys.version_info[1])) == 311:
                         bars = dict(self.bars)
                         if len(bars) == 0:
                             if progress_.text != 'Starting conversion...':
-                                progress_ = change_text_of_label(progress_, 'Starting conversion...')
-                            pass
+                                progress_.change_text('Starting conversion...')
                         elif len(list(bars.keys())) == 1 and bars['chunk']["index"] != -1:
                             if progress_.text != 'Converting chunks...':
-                                progress_ = change_text_of_label(progress_, 'Converting chunks...')
+                                progress_.change_text('Converting chunks...')
                             self.progress_bar = (bars['chunk']['index'] / bars['chunk']['total']) * 100
                             progress.set_current_progress(self.progress_bar)
                         elif len(list(bars.keys())) == 2 and bars['t']["index"] != -1:
                             if progress_.text != 'Finalizing conversion...':
-                                progress_ = change_text_of_label(progress_, 'Finalizing conversion...')
+                                progress_.change_text('Finalizing conversion...')
                                 progress.set_current_progress(0)
                             self.progress_bar = (bars['t']['index'] / bars['t']['total']) * 100
                             progress.set_current_progress(self.progress_bar)
@@ -139,11 +140,11 @@ if int(str(sys.version_info[0]) + str(sys.version_info[1])) == 311:
             progress.visible = False
             window.fill(COLOR, pygame.Rect(progress.relative_rect.left, progress.relative_rect.top,
                                            progress.relative_rect.width, progress.relative_rect.height))
-            progress_ = change_text_of_label(progress_, 'Download finished')
+            progress_.change_text('Download finished')
         except Exception as error:
             messagebox.showerror('Error', f'An error occurred: {error}')
             progress.set_current_progress(0)
-            progress_ = change_text_of_label(progress_, 'Download failed')
+            progress_.change_text('Download failed')
         root.destroy()
 
 
@@ -159,7 +160,7 @@ if int(str(sys.version_info[0]) + str(sys.version_info[1])) == 311:
             pygame.image.load('assets/youtube.png')
         else:
             try:
-                video = YouTube(url_entry.get_text())
+                video = YouTube(url_entry.get_text(), use_oauth=True, allow_oauth_cache=True)
                 title = video.title
                 duration = video.length
                 if duration >= 60:
@@ -180,7 +181,7 @@ if int(str(sys.version_info[0]) + str(sys.version_info[1])) == 311:
                 with open('cache/thumbnail.png', 'wb') as f:
                     shutil.copyfileobj(requests.get(video.thumbnail_url, stream=True).raw, f)
                 image = pygame.image.load('cache/thumbnail.png')
-                preview_elem = change_image_of_ui_image(preview_elem, image)
+                preview_elem.change_image(image)
                 os.remove('cache/thumbnail.png')
                 desc = video.description
             except Exception as error:
@@ -188,10 +189,10 @@ if int(str(sys.version_info[0]) + str(sys.version_info[1])) == 311:
                 final = 'Error'
                 desc = 'Error'
                 image = pygame.image.load('assets/youtube.png')
-                preview_elem = change_image_of_ui_image(preview_elem, image)
+                preview_elem.change_image(image)
                 messagebox.showerror('Error', f'An error occurred: {error}')
-        titre = change_text_of_label(titre, title)
-        duration_ = change_text_of_label(duration_, final)
+        titre.change_text(title)
+        duration_.change_text(final)
         description.set_text(desc)
 
 
@@ -205,21 +206,21 @@ if int(str(sys.version_info[0]) + str(sys.version_info[1])) == 311:
                                                     manager=manager)
     menu = pygame_gui.elements.UIDropDownMenu(relative_rect=pygame.Rect(500, 100, 120, 30), manager=manager,
                                               options_list=['MP4', 'AVI', 'MOV'], starting_option='MP4')
-    titre_ = pygame_gui.elements.UILabel(relative_rect=pygame.Rect(30, 150, 300, 30), text='Video title:',
-                                         manager=manager)
-    titre = pygame_gui.elements.UILabel(relative_rect=pygame.Rect(35, 175, 500, 30), text='', manager=manager)
-    duration__ = pygame_gui.elements.UILabel(relative_rect=pygame.Rect(30, 200, 300, 30), text='Video duration:',
+    titre_ = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(30, 150, 300, 30), text='Video title:',
+                           manager=manager)
+    titre = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(35, 175, 500, 30), text='', manager=manager)
+    duration__ = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(30, 200, 300, 30), text='Video duration:',
                                              manager=manager)
-    duration_ = pygame_gui.elements.UILabel(relative_rect=pygame.Rect(35, 225, 500, 30), text='', manager=manager)
-    description_ = pygame_gui.elements.UILabel(relative_rect=pygame.Rect(30, 250, 300, 30), text='Video description:',
+    duration_ = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(35, 225, 500, 30), text='', manager=manager)
+    description_ = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(30, 250, 300, 30), text='Video description:',
                                                manager=manager)
     description = pygame_gui.elements.UITextBox(html_text='', relative_rect=pygame.Rect(35, 300, 450, 200),
                                                 manager=manager)
-    preview_ = pygame_gui.elements.UILabel(relative_rect=pygame.Rect(550, 200, 300, 30), text='Video thumbnail:',
+    preview_ = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(550, 200, 300, 30), text='Video thumbnail:',
                                            manager=manager)
-    preview_elem = pygame_gui.elements.UIImage(relative_rect=pygame.Rect(550, 250, 300, 200),
+    preview_elem = CustomUIImage(window=window, background_color=COLOR, relative_rect=pygame.Rect(550, 250, 300, 200),
                                                image_surface=pygame.image.load('assets/youtube.png'), manager=manager)
-    progress_ = pygame_gui.elements.UILabel(relative_rect=pygame.Rect(650, 125, 300, 30), text='Progress',
+    progress_ = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(650, 125, 300, 30), text='Progress',
                                             manager=manager)
     progress = pygame_gui.elements.UIProgressBar(relative_rect=pygame.Rect(650, 150, 200, 30), manager=manager,
                                                  visible=False)
