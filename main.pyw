@@ -21,12 +21,12 @@ try:
     from proglog import ProgressBarLogger
 except Exception as e:
     if messagebox.askyesno('Error',
-                            f'An error occurred: {e}\n All the required modules are not installed, do you want to '
-                            f'install them? (This will take a few minutes)'):
+                           f'An error occurred: {e}\n All the required modules are not installed, do you want to '
+                           f'install them? (This will take a few minutes)'):
         import subprocess
 
         messagebox.showinfo('Downloading', 'The download will start when you close this window. The program will '
-                                            'restart once the download is complete.')
+                                           'restart once the download is complete.')
         subprocess.call(['python', '-m', 'pip', 'install', '--upgrade', 'pip'])
         subprocess.call(['pip', 'install', '-r', 'requirements.txt'])
         import pygame
@@ -58,6 +58,34 @@ font = pygame.font.SysFont('Arial', 20)
 if not os.path.exists('./cache'):
     os.mkdir('./cache')
 
+
+class Logger(ProgressBarLogger):
+    def __init__(self, input_video: VideoFileClip, init_state=None, bars=None, ignored_bars=None,
+                 logged_bars='all', min_time_interval=0, ignore_bars_under=0):
+        super().__init__(init_state, bars, ignored_bars, logged_bars, min_time_interval,
+                         ignore_bars_under)
+        self.video = input_video
+        self.progress_bar = 0
+
+    def callback(self, message=None):
+        global progress, progress_
+        bars = dict(self.bars)
+        if len(bars) == 0:
+            if progress_.text != 'Starting conversion...':
+                progress_.change_text('Starting conversion...')
+        elif len(list(bars.keys())) == 1 and bars['chunk']["index"] != -1:
+            if progress_.text != 'Converting chunks...':
+                progress_.change_text('Converting chunks...')
+            self.progress_bar = (bars['chunk']['index'] / bars['chunk']['total']) * 100
+            progress.set_current_progress(self.progress_bar)
+        elif len(list(bars.keys())) == 2 and bars['t']["index"] != -1:
+            if progress_.text != 'Finalizing conversion...':
+                progress_.change_text('Finalizing conversion...')
+                progress.set_current_progress(0)
+            self.progress_bar = (bars['t']['index'] / bars['t']['total']) * 100
+            progress.set_current_progress(self.progress_bar)
+
+
 class CustomUILabel(pygame_gui.elements.UILabel):
     def __init__(self, window: pygame.Surface, background_color: tuple[int, int, int], *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -66,9 +94,11 @@ class CustomUILabel(pygame_gui.elements.UILabel):
 
     def change_text(self, text: str):
         relative = self.relative_rect
-        self.window.fill(self.background_color, pygame.Rect(relative.left, relative.top, relative.width, relative.height))
+        self.window.fill(self.background_color,
+                         pygame.Rect(relative.left, relative.top, relative.width, relative.height))
         self.text = text
         self.rebuild()
+
 
 class CustomUIImage(pygame_gui.elements.UIImage):
     def __init__(self, window: pygame.Surface, background_color: tuple[int, int, int], *args, **kwargs):
@@ -78,9 +108,11 @@ class CustomUIImage(pygame_gui.elements.UIImage):
 
     def change_image(self, image: pygame.Surface | pygame.SurfaceType):
         relative = self.relative_rect
-        self.window.fill(self.background_color, pygame.Rect(relative.left, relative.top, relative.width, relative.height))
+        self.window.fill(self.background_color,
+                         pygame.Rect(relative.left, relative.top, relative.width, relative.height))
         self.image = image
         self.rebuild()
+
 
 def choose_directory():
     """Choose the directory"""
@@ -101,57 +133,40 @@ def start_download():
         progress.set_current_progress(0)
         progress_.change_text('Downloading...')
         video = YouTube(url_entry.get_text(),
-                        on_progress_callback=lambda stream, chunk, bytes_remaining: progress.set_current_progress(
-                            100 - (bytes_remaining / stream.filesize * 100)), use_oauth=True, allow_oauth_cache=True)
+                        on_progress_callback=lambda stream, _, bytes_remaining: progress.set_current_progress(
+                            100 - (bytes_remaining / stream.filesize * 100)))
         file = video.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
-        if download_format != 'mp4':
+        if download_format in ['mp3', 'ogg']:
+            file.download("./cache")
+            video_ = VideoFileClip(f"./cache/{video.title}.mp4")
+            progress.set_current_progress(0)
+            progress_.change_text("Converting...")
+            logger = Logger(video_)
+            video_.audio.write_audiofile(f'{path}/{video.title}.{download_format}', codec=file.audio_codec,
+                                         logger=logger, fps=30)
+            return
+        elif download_format in ['mov', 'avi']:
             file.download('./cache')
             video_ = VideoFileClip(f'./cache/{video.title}.mp4')
             progress.set_current_progress(0)
             progress_.change_text('Converting...')
-
-            class Logger(ProgressBarLogger):
-                def __init__(self, input_video: VideoFileClip, init_state=None, bars=None, ignored_bars=None,
-                                logged_bars='all', min_time_interval=0, ignore_bars_under=0):
-                    super().__init__(init_state, bars, ignored_bars, logged_bars, min_time_interval,
-                                        ignore_bars_under)
-                    self.video = input_video
-                    self.progress_bar = 0
-
-                def callback(self, message=None):
-                    global progress, progress_
-                    bars = dict(self.bars)
-                    if len(bars) == 0:
-                        if progress_.text != 'Starting conversion...':
-                            progress_.change_text('Starting conversion...')
-                    elif len(list(bars.keys())) == 1 and bars['chunk']["index"] != -1:
-                        if progress_.text != 'Converting chunks...':
-                            progress_.change_text('Converting chunks...')
-                        self.progress_bar = (bars['chunk']['index'] / bars['chunk']['total']) * 100
-                        progress.set_current_progress(self.progress_bar)
-                    elif len(list(bars.keys())) == 2 and bars['t']["index"] != -1:
-                        if progress_.text != 'Finalizing conversion...':
-                            progress_.change_text('Finalizing conversion...')
-                            progress.set_current_progress(0)
-                        self.progress_bar = (bars['t']['index'] / bars['t']['total']) * 100
-                        progress.set_current_progress(self.progress_bar)
-
             logger = Logger(video_)
-            video_.write_videofile(f'{path}/{video.title}.{download_format}', codec='libx264', audio_codec='aac',
-                                    temp_audiofile='./cache/temp.m4a', remove_temp=True, fps=30, threads=4,
-                                    logger=logger)
+            video_.write_videofile(f'{path}/{video.title}.{download_format}', codec=file.video_codec,
+                                   audio_codec=file.audio_codec,
+                                   temp_audiofile='./cache/temp.m4a', remove_temp=True, fps=30, threads=4,
+                                   logger=logger)
             os.remove(f'./cache/{video.title}.mp4')
         else:
             file.download(path)
         root = tk.Tk()
         root.withdraw()
         if messagebox.askyesno('Download finished',
-                                'The video has been downloaded, do you want to open the folder?'):
+                               'The video has been downloaded, do you want to open the folder?'):
             os.startfile(path)
         progress.set_current_progress(0)
         progress.visible = False
         window.fill(COLOR, pygame.Rect(progress.relative_rect.left, progress.relative_rect.top,
-                                        progress.relative_rect.width, progress.relative_rect.height))
+                                       progress.relative_rect.width, progress.relative_rect.height))
         progress_.change_text('Download finished')
     except Exception as error:
         messagebox.showerror('Error', f'An error occurred: {error}')
@@ -172,7 +187,7 @@ def preview_launch():
         pygame.image.load('assets/youtube.png')
     else:
         try:
-            video = YouTube(url_entry.get_text(), use_oauth=True, allow_oauth_cache=True)
+            video = YouTube(url_entry.get_text())
             title = video.title
             duration = video.length
             if duration >= 60:
@@ -211,31 +226,38 @@ def preview_launch():
 url_entry = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(50, 50, 800, 30), manager=manager)
 url_entry.set_text('https://www.youtube.com/watch?v=dQw4w9WgXcQ')
 preview_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(50, 100, 120, 30), text='Preview',
-                                                manager=manager)
+                                              manager=manager)
 download_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(200, 100, 120, 30), text='Download',
-                                                manager=manager)
+                                               manager=manager)
 directory_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(350, 100, 120, 30), text='Directory',
                                                 manager=manager)
 menu = pygame_gui.elements.UIDropDownMenu(relative_rect=pygame.Rect(500, 100, 120, 30), manager=manager,
-                                            options_list=['MP4', 'AVI', 'MOV'], starting_option='MP4')
-titre_ = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(30, 150, 300, 30), text='Video title:',
-                        manager=manager)
-titre = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(35, 175, 500, 30), text='', manager=manager)
-duration__ = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(30, 200, 300, 30), text='Video duration:',
-                                            manager=manager)
-duration_ = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(35, 225, 500, 30), text='', manager=manager)
-description_ = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(30, 250, 300, 30), text='Video description:',
-                                            manager=manager)
+                                          options_list=['MP4', 'AVI', 'MOV', 'MP3', 'OGG'], starting_option='MP4')
+titre_ = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(30, 150, 300, 30),
+                       text='Video title:',
+                       manager=manager)
+titre = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(35, 175, 500, 30), text='',
+                      manager=manager)
+duration__ = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(30, 200, 300, 30),
+                           text='Video duration:',
+                           manager=manager)
+duration_ = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(35, 225, 500, 30), text='',
+                          manager=manager)
+description_ = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(30, 250, 300, 30),
+                             text='Video description:',
+                             manager=manager)
 description = pygame_gui.elements.UITextBox(html_text='', relative_rect=pygame.Rect(35, 300, 450, 200),
                                             manager=manager)
-preview_ = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(550, 200, 300, 30), text='Video thumbnail:',
-                                        manager=manager)
+preview_ = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(550, 200, 300, 30),
+                         text='Video thumbnail:',
+                         manager=manager)
 preview_elem = CustomUIImage(window=window, background_color=COLOR, relative_rect=pygame.Rect(550, 250, 300, 200),
-                                            image_surface=pygame.image.load('assets/youtube.png'), manager=manager)
-progress_ = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(650, 125, 300, 30), text='Progress',
-                                        manager=manager)
+                             image_surface=pygame.image.load('assets/youtube.png'), manager=manager)
+progress_ = CustomUILabel(window=window, background_color=COLOR, relative_rect=pygame.Rect(650, 125, 300, 30),
+                          text='Progress',
+                          manager=manager)
 progress = pygame_gui.elements.UIProgressBar(relative_rect=pygame.Rect(650, 150, 200, 30), manager=manager,
-                                                visible=False)
+                                             visible=False)
 is_running = True
 while is_running:
     for event in pygame.event.get():
@@ -247,7 +269,7 @@ while is_running:
                 preview_launch()
             elif event.ui_element == download_button:
                 if messagebox.askyesno('Download',
-                                        'The download will start The window may freeze, do you want to continue?'):
+                                       'The download will start The window may freeze, do you want to continue?'):
                     download_thread = threading.Thread(target=start_download)
                     download_thread.start()
                 window.fill(COLOR, pygame.Rect(-280, 250, 800, 30))
@@ -261,9 +283,13 @@ while is_running:
                     download_format = 'avi'
                 elif event.text == 'MOV':
                     download_format = 'mov'
-                window.fill(COLOR, pygame.Rect(500, 100, 400, 100))
+                elif event.text == 'MP4':
+                    download_format = 'mp4'
+                elif event.text == 'OGG':
+                    download_format = 'ogg'
+                window.fill(COLOR, pygame.Rect(500, 100, 400, 150))
         elif event.type == pygame.MOUSEBUTTONDOWN:
-            window.fill(COLOR, pygame.Rect(500, 100, 400, 100))
+            window.fill(COLOR, pygame.Rect(500, 100, 400, 150))
         manager.process_events(event)
     manager.update(clock.tick(60) / 1000.0)
     manager.draw_ui(window)
