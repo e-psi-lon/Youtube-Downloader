@@ -208,6 +208,9 @@ def preview_launch():
             with open('cache/thumbnail.png', 'wb') as f:
                 shutil.copyfileobj(requests.get(video.thumbnail_url, stream=True).raw, f)
             image = pygame.image.load('cache/thumbnail.png')
+            # On redimensionne l'image sans la rogner
+            if image.get_width() > 300 or image.get_height() > 200:
+                image = pygame.transform.smoothscale(image, (300, 200))
             preview_elem.change_image(image)
             os.remove('cache/thumbnail.png')
             desc = video.description
@@ -220,8 +223,10 @@ def preview_launch():
             messagebox.showerror('Error', f'An error occurred: {error}')
     titre.change_text(title)
     duration_.change_text(final)
-    description.set_text(desc)
-
+    try:
+        description.set_text(str(desc))
+    except Exception as error:
+        messagebox.showerror('Error', f'An error occurred: {error} (but the program will continue)')
 
 url_entry = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(50, 50, 800, 30), manager=manager)
 url_entry.set_text('https://www.youtube.com/watch?v=dQw4w9WgXcQ')
@@ -277,16 +282,17 @@ while is_running:
                 choose_directory()
         elif event.type == pygame_gui.UI_DROP_DOWN_MENU_CHANGED:
             if event.ui_element == menu:
-                if event.text == 'MP4':
-                    download_format = 'mp4'
-                elif event.text == 'AVI':
-                    download_format = 'avi'
-                elif event.text == 'MOV':
-                    download_format = 'mov'
-                elif event.text == 'MP4':
-                    download_format = 'mp4'
-                elif event.text == 'OGG':
-                    download_format = 'ogg'
+                match event.text:
+                    case 'MP4':
+                        download_format = 'mp4'
+                    case 'AVI':
+                        download_format = 'avi'
+                    case 'MOV':
+                        download_format = 'mov'
+                    case 'OGG':
+                        download_format = 'ogg'
+                    case _:
+                        pass
                 window.fill(COLOR, pygame.Rect(500, 100, 400, 150))
         elif event.type == pygame.MOUSEBUTTONDOWN:
             window.fill(COLOR, pygame.Rect(500, 100, 400, 150))
