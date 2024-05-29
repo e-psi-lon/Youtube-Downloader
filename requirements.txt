@@ -2,5 +2,5 @@ pygame==2.5.2
 pygame_gui==0.6.9
 moviepy==2.0.0.dev2
 pytube==15.0.0
-requests==2.31.0
+requests==2.32.2
 proglog==0.1.10
