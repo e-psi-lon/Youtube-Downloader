@@ -1,339 +1,379 @@
-import shutil
+#!/home/lilian-maulny/Dev/Youtube-Downloader/.venv/bin/python
 import sys
-import threading
-import tkinter as tk
-from tkinter import filedialog, messagebox
-import ctypes
 import os
+from dataclasses import dataclass
+from enum import Enum
+from io import BytesIO
+from typing import Optional
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QLineEdit, QFileDialog, \
+    QMessageBox, QProgressBar, QComboBox, QHBoxLayout, QScrollArea, QDialog, QStyle
+from PyQt5.QtGui import QPixmap, QIcon
+from PyQt5.QtCore import Qt, QByteArray, QBuffer, QThread, pyqtSignal
+from pytubefix import YouTube
+import requests
+from ffmpeg import Progress, FFmpeg
 
-if not int(str(sys.version_info[0]) + str(sys.version_info[1])) == 311:
-    messagebox.showerror('Error',
-                         f'This program requires Python 3.11 to run (you are using Python {str(sys.version_info[0])}.'
-                         f'{str(sys.version_info[1])})')
-    exit()
+WINDOW_WIDTH = 800
+WINDOW_HEIGHT = 400
+THUMBNAIL_WIDTH = 300
+THUMBNAIL_HEIGHT = 210
+DESCRIPTION_MAX_LENGTH = 100
 
-try:
-    import pygame
-    import pygame_gui
-    import requests
-    from pytube import YouTube
-    from moviepy.editor import VideoFileClip
-    from proglog import ProgressBarLogger
-except Exception as e:
-    if messagebox.askyesno('Error',
-                           f'An error occurred: {e}\n All the required modules are not installed, do you want to '
-                           f'install them? (This will take a few minutes)'):
-        import subprocess
-
-        messagebox.showinfo('Downloading', 'The download will start when you close this window. The program will '
-                                           'restart once the download is complete.')
-        subprocess.call(['python', '-m', 'pip', 'install', '--upgrade', 'pip'])
-        subprocess.call(['pip', 'install', '-r', 'requirements.txt'])
-        import pygame
-        import pygame_gui
-        import requests
-        from pytube import YouTube
-        from moviepy.editor import VideoFileClip
-        from proglog import ProgressBarLogger
-    else:
-        exit()
-
-
-class Logger(ProgressBarLogger):
-    def __init__(self, ui, input_video: VideoFileClip, init_state=None, bars=None, ignored_bars=None,
-                 logged_bars='all', min_time_interval=0, ignore_bars_under=0):
-        super().__init__(init_state, bars, ignored_bars, logged_bars, min_time_interval,
-                         ignore_bars_under)
-        self.ui = ui
-        self.video = input_video
-        self.progress_bar = 0
-
-    def callback(self, message=None):
-        bars = dict(self.bars)
-        if len(bars) == 0:
-            if self.ui.progress_.text != 'Starting conversion...':
-                self.ui.progress_.change_text('Starting conversion...')
-        elif len(list(bars.keys())) == 1 and bars['chunk']["index"] != -1:
-            if self.ui.progress_.text != 'Converting chunks...':
-                self.ui.progress_.change_text('Converting chunks...')
-            self.progress_bar = (bars['chunk']['index'] / bars['chunk']['total']) * 100
-            self.ui.progress.set_current_progress(self.progress_bar)
-        elif len(list(bars.keys())) == 2 and bars['t']["index"] != -1:
-            if self.ui.progress_.text != 'Finalizing conversion...':
-                self.ui.progress_.change_text('Finalizing conversion...')
-                self.ui.progress.set_current_progress(0)
-            self.progress_bar = (bars['t']['index'] / bars['t']['total']) * 100
-            self.ui.progress.set_current_progress(self.progress_bar)
+def format_time(seconds: int) -> str:
+    days = seconds // (24 * 3600)
+    seconds %= (24 * 3600)
+    hours = seconds // 3600
+    seconds %= 3600
+    minutes = seconds // 60
+    seconds %= 60
+    time_elements = []
+    if days > 0:
+        time_elements.append(f"{days} day{'s' if days > 1 else ''}")
+    if hours > 0:
+        time_elements.append(f"{hours} hour{'s' if hours > 1 else ''}")
+    if minutes > 0:
+        time_elements.append(f"{minutes} minute{'s' if minutes > 1 else ''}")
+    if seconds > 0:
+        time_elements.append(f"{seconds} second{'s' if seconds > 1 else ''}")
+    return " ".join(time_elements)
 
 
-class CustomUILabel(pygame_gui.elements.UILabel):
-    def __init__(self, window: pygame.Surface, background_color: tuple[int, int, int], *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.window = window
-        self.background_color = background_color
+@dataclass
+class Format:
+    name: str
+    extension: str
+    ffmpeg_args: str
 
-    def change_text(self, text: str):
-        relative = self.relative_rect
-        self.window.fill(self.background_color,
-                         pygame.Rect(relative.left, relative.top, relative.width, relative.height))
-        self.text = text
-        self.rebuild()
+    def __str__(self) -> str:
+        return self.extension
 
+@dataclass
+class VideoPreviewData:
+    title: str
+    duration: int
+    description: str
+    thumbnail_data: bytes
 
-class CustomUIImage(pygame_gui.elements.UIImage):
-    def __init__(self, window: pygame.Surface, background_color: tuple[int, int, int], *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.window = window
-        self.background_color = background_color
-
-    def change_image(self, image: pygame.Surface | pygame.SurfaceType):
-        relative = self.relative_rect
-        self.window.fill(self.background_color,
-                         pygame.Rect(relative.left, relative.top, relative.width, relative.height))
-        self.image = image
-        self.rebuild()
-
-
-class YoutubeDownloader:
-    def __init__(self):
-        self.download_format = 'mp4'
-        self.video_url = None
-        self.path = '.'
-        self.SCREENSIZE = (900, 550)
-        self.COLOR = (54, 57, 63)
-        pygame.init()
-        self.window = pygame.display.set_mode(self.SCREENSIZE)
-        pygame.display.set_caption('YouTube Downloader')
-        pygame.display.set_icon(pygame.image.load('assets/icon.png'))
-        self.clock = pygame.time.Clock()
-        self.window.fill(self.COLOR)
-        self.manager = pygame_gui.UIManager(self.SCREENSIZE, 'assets/theme.json')
-        self.font = pygame.font.SysFont('Arial', 20)
-
-        if not os.path.exists('./cache'):
-            os.mkdir('./cache')
-        self.url_entry = pygame_gui.elements.UITextEntryLine(relative_rect=pygame.Rect(50, 50, 800, 30),
-                                                             manager=self.manager)
-        self.url_entry.set_text('https://www.youtube.com/watch?v=dQw4w9WgXcQ')
-        self.preview_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(50, 100, 120, 30), text='Preview',
-                                                           manager=self.manager)
-        self.download_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(200, 100, 120, 30),
-                                                            text='Download',
-                                                            manager=self.manager)
-        self.directory_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(350, 100, 120, 30),
-                                                             text='Directory',
-                                                             manager=self.manager)
-        self.menu = pygame_gui.elements.UIDropDownMenu(relative_rect=pygame.Rect(500, 100, 120, 30),
-                                                       manager=self.manager,
-                                                       options_list=['MP4', 'AVI', 'MOV', 'MP3', 'OGG'],
-                                                       starting_option='MP4')
-
-        self.connect = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(650, 100, 120, 30), text='Connect',
-                                                    manager=self.manager)
-
-        self.titre_ = CustomUILabel(window=self.window, background_color=self.COLOR,
-                                    relative_rect=pygame.Rect(30, 150, 300, 30),
-                                    text='Video title:',
-                                    manager=self.manager)
-        self.titre = CustomUILabel(window=self.window, background_color=self.COLOR,
-                                   relative_rect=pygame.Rect(35, 175, 500, 30), text='',
-                                   manager=self.manager)
-        self.duration__ = CustomUILabel(window=self.window, background_color=self.COLOR,
-                                        relative_rect=pygame.Rect(30, 200, 300, 30),
-                                        text='Video duration:',
-                                        manager=self.manager)
-        self.duration_ = CustomUILabel(window=self.window, background_color=self.COLOR,
-                                       relative_rect=pygame.Rect(35, 225, 500, 30), text='',
-                                       manager=self.manager)
-        self.description_ = CustomUILabel(window=self.window, background_color=self.COLOR,
-                                          relative_rect=pygame.Rect(30, 250, 300, 30),
-                                          text='Video description:',
-                                          manager=self.manager)
-        self.description = pygame_gui.elements.UITextBox(html_text='', relative_rect=pygame.Rect(35, 300, 450, 200),
-                                                         manager=self.manager)
-        self.preview_ = CustomUILabel(window=self.window, background_color=self.COLOR,
-                                      relative_rect=pygame.Rect(550, 200, 300, 30),
-                                      text='Video thumbnail:',
-                                      manager=self.manager)
-        self.preview_elem = CustomUIImage(window=self.window, background_color=self.COLOR,
-                                          relative_rect=pygame.Rect(550, 250, 300, 200),
-                                          image_surface=pygame.image.load('assets/youtube.png'), manager=self.manager)
-        self.progress_ = CustomUILabel(window=self.window, background_color=self.COLOR,
-                                       relative_rect=pygame.Rect(650, 125, 300, 30),
-                                       text='Progress',
-                                       manager=self.manager)
-        self.progress = pygame_gui.elements.UIProgressBar(relative_rect=pygame.Rect(650, 150, 200, 30),
-                                                          manager=self.manager,
-                                                          visible=False)
-        is_running = True
-        while is_running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    is_running = False
-                elif event.type == pygame_gui.UI_BUTTON_PRESSED:
-                    if event.ui_element == self.preview_button:
-                        self.window.fill(self.COLOR, pygame.Rect(-280, 250, 800, 30))
-                        self.preview_launch()
-                    elif event.ui_element == self.download_button:
-                        if messagebox.askyesno('Download',
-                                               'The download will start The window may freeze, '
-                                               'do you want to continue?'):
-                            download_thread = threading.Thread(target=self.start_download)
-                            download_thread.start()
-                        self.window.fill(self.COLOR, pygame.Rect(-280, 250, 800, 30))
-                    elif event.ui_element == self.directory_button:
-                        self.choose_directory()
-                    elif event.ui_element == self.connect:
-                        # On affiche une popup pour se connecter à son compte google
-                        response = messagebox.askyesnocancel("Connect to your google account",
-                                                             "Do you want to keep your account connected?",
-                                                             default=messagebox.YES)
-                        if response is None:
-                            continue
-                        if response:
-                            YouTube('https://www.youtube.com/watch?v=dQw4w9WgXcQ', use_oauth=True,
-                                    allow_oauth_cache=True)
-                        else:
-                            YouTube('https://www.youtube.com/watch?v=dQw4w9WgXcQ', use_oauth=True,
-                                    allow_oauth_cache=False)
-
-                elif event.type == pygame_gui.UI_DROP_DOWN_MENU_CHANGED:
-                    if event.ui_element == self.menu:
-                        match event.text:
-                            case 'MP4':
-                                self.download_format = 'mp4'
-                            case 'AVI':
-                                self.download_format = 'avi'
-                            case 'MOV':
-                                self.download_format = 'mov'
-                            case 'OGG':
-                                self.download_format = 'ogg'
-                            case _:
-                                pass
-                        self.window.fill(self.COLOR, pygame.Rect(500, 100, 400, 150))
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    self.window.fill(self.COLOR, pygame.Rect(500, 100, 400, 150))
-                self.manager.process_events(event)
-            self.manager.update(self.clock.tick(60) / 1000.0)
-            self.manager.draw_ui(self.window)
-            pygame.display.update()
-        pygame.quit()
-
-    def choose_directory(self):
-        """Choose the directory"""
-        root = tk.Tk()
-        root.withdraw()
-        self.path = filedialog.askdirectory(parent=root, initialdir='.', title='Please select a directory')
-        root.destroy()
-
-    def start_download(self):
-        """Download the video"""
-        root = tk.Tk()
-        root.withdraw()
+class PreviewWorker(QThread):
+    finished = pyqtSignal(VideoPreviewData)
+    error = pyqtSignal(str)
+    
+    def __init__(self, url):
+        super().__init__()
+        self.url = url
+        
+    def run(self):
         try:
-            self.progress.visible = True
-            self.progress.set_current_progress(0)
-            self.progress_.change_text('Downloading...')
-            video = YouTube(self.url_entry.get_text(),
-                            on_progress_callback=lambda stream, _, bytes_remaining: self.progress.set_current_progress(
-                                100 - (bytes_remaining / stream.filesize * 100)))
-            file = video.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
-            if self.download_format in ['mp3', 'ogg']:
-                file.download("./cache")
-                video_ = VideoFileClip(f"./cache/{video.title}.mp4")
-                self.progress.set_current_progress(0)
-                self.progress_.change_text("Converting...")
-                logger = Logger(self, video_)
-                video_.audio.write_audiofile(f'{self.path}/{video.title}.{self.download_format}',
-                                             codec=file.audio_codec,
-                                             logger=logger, fps=30)
-                return
-            elif self.download_format in ['mov', 'avi']:
-                file.download('./cache')
-                video_ = VideoFileClip(f'./cache/{video.title}.mp4')
-                self.progress.set_current_progress(0)
-                self.progress_.change_text('Converting...')
-                logger = Logger(self, video_)
-                video_.write_videofile(f'{self.path}/{video.title}.{self.download_format}', codec=file.video_codec,
-                                       audio_codec=file.audio_codec,
-                                       temp_audiofile='./cache/temp.m4a', remove_temp=True, fps=30, threads=4,
-                                       logger=logger)
-                os.remove(f'./cache/{video.title}.mp4')
+            video = YouTube(self.url)
+            response = requests.get(video.thumbnail_url)
+            preview_data = VideoPreviewData(
+                title=video.title,
+                duration=video.length,
+                description=video.description or "No description available",
+                thumbnail_data=response.content
+            )
+            self.finished.emit(preview_data)
+        except Exception as e:
+            self.error.emit(str(e))
+
+class DownloadWorker(QThread):
+    finished = pyqtSignal()
+    error = pyqtSignal(str)
+    
+    def __init__(self, url, path, format):
+        super().__init__()
+        self.url = url
+        self.path = path
+        self.format = format
+        
+    def run(self):
+        try:
+            video = YouTube(self.url)
+            stream = video.streams.filter(progressive=True, file_extension='mp4').first()
+            video_path = os.path.join(self.path, f"{video.title}.mp4")
+            buffer = BytesIO()
+            stream.stream_to_buffer(buffer)
+            buffer.seek(0)
+            
+            if self.format != "MP4":
+                self.convert_video(video.title, buffer.getvalue(), Formats[self.format].value)
             else:
-                file.download(self.path)
-            root = tk.Tk()
-            root.withdraw()
-            if messagebox.askyesno('Download finished',
-                                   'The video has been downloaded, do you want to open the folder?'):
-                os.startfile(self.path)
-            self.progress.set_current_progress(0)
-            self.progress.visible = False
-            self.window.fill(self.COLOR, pygame.Rect(self.progress.relative_rect.left, self.progress.relative_rect.top,
-                                                     self.progress.relative_rect.width,
-                                                     self.progress.relative_rect.height))
-            self.progress_.change_text('Download finished')
-        except Exception as error:
-            messagebox.showerror('Error', f'An error occurred: {error}')
-            self.progress.set_current_progress(0)
-            self.progress_.change_text('Download failed')
-        root.destroy()
+                with open(video_path, "wb") as file:
+                    file.write(buffer.getvalue())
+            self.finished.emit()
+        except Exception as e:
+            self.error.emit(str(e))
 
-    def preview_launch(self):
-        """Get some info of the video"""
-        root = tk.Tk()
-        root.withdraw()
-        if self.url_entry.get_text() == '':
-            title = 'No video provided'
-            final = 'No video provided'
-            desc = 'No video provided'
-            pygame.image.load('assets/youtube.png')
-        else:
-            try:
-                video = YouTube(self.url_entry.get_text())
-                title = video.title
-                duration = video.length
-                if duration >= 60:
-                    if duration >= 3600:
-                        hour = int(duration / 3600)
-                        duration = duration - 3600 * hour
-                        minutes = int(duration / 60)
-                        duration = duration - 60 * minutes
-                        sec = duration
-                        final = f'{hour}h {minutes}min {sec}s'
-                    else:
-                        minutes = int(duration / 60)
-                        duration = duration - 60 * minutes
-                        sec = duration
-                        final = f'{minutes}min {sec}s'
-                else:
-                    final = f'{duration}s'
-                with open('cache/thumbnail.png', 'wb') as f:
-                    shutil.copyfileobj(requests.get(video.thumbnail_url, stream=True).raw, f)
-                image = pygame.image.load('cache/thumbnail.png')
-                # On redimensionne l'image sans la rogner
-                if image.get_width() > 300 or image.get_height() > 200:
-                    image = pygame.transform.smoothscale(image, (300, 200))
-                self.preview_elem.change_image(image)
-                os.remove('cache/thumbnail.png')
-                desc = video.description
-            except Exception as error:
-                title = 'Error'
-                final = 'Error'
-                desc = 'Error'
-                image = pygame.image.load('assets/youtube.png')
-                self.preview_elem.change_image(image)
-                messagebox.showerror('Error', f'An error occurred: {error}')
-        self.titre.change_text(title)
-        self.duration_.change_text(final)
+    def convert_video(self, name: str, input_data: bytes, output_format: Format) -> None:
+        output_file = f"{name}.{output_format}"
         try:
-            self.description.set_text(str(desc))
-        except Exception as error:
-            messagebox.showerror('Error', f'An error occurred: {error} (but the program will continue)')
+            process = FFmpeg().input("pipe:0").output(output_file)
+            @process.on('progress')
+            def on_progress(progress: Progress):
+                self.progress_bar.setValue(progress.size)
 
+            process.execute(input_data)
+        except Exception as e:
+            self.error.emit(f"Conversion failed: {str(e)}")
+class MessageBox(QDialog):
+    def __init__(self, parent=None, title="", message="", message_level=QMessageBox.Information):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setFixedSize(300, 100)
+        
+        layout = QVBoxLayout()
+        
+        icon_label = QLabel()
+        icon = self._get_icon(message_level)
+        if icon:
+            icon_label.setPixmap(icon.pixmap(16, 16))
+            layout.addWidget(icon_label)
+        
+        message_label = QLabel(message)
+        layout.addWidget(message_label)
+        
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+
+        ok_button = QPushButton("OK")
+        ok_button.setMaximumWidth(100)  # Adjust the width as needed
+        ok_button.clicked.connect(self.accept)
+        button_layout.addWidget(ok_button)
+        
+        button_layout.addStretch()
+        layout.addLayout(button_layout)
+        
+        self.setLayout(layout)
+    
+    def _get_icon(self, message_level):
+        style = self.style()
+        match message_level:
+            case QMessageBox.Information:
+                return style.standardIcon(QStyle.SP_MessageBoxInformation)
+            case QMessageBox.Warning:
+                return style.standardIcon(QStyle.SP_MessageBoxWarning)
+            case QMessageBox.Critical:
+                return style.standardIcon(QStyle.SP_MessageBoxCritical)
+            case QMessageBox.Question:
+                return style.standardIcon(QStyle.SP_MessageBoxQuestion)
+            case _:
+                return None
+
+class Formats(Enum):
+    MP4 = Format("MP4", "mp4", "-c:v libx264 -c:a aac")
+    AVI = Format("AVI", "avi", "-c:v libxvid -c:a mp3")
+    MOV = Format("MOV", "mov", "-c:v libx264 -c:a aac")
+    MP3 = Format("MP3", "mp3", "-c:a libmp3lame")
+    OGG = Format("OGG", "ogg", "-c:a libvorbis")
+    OPUS = Format("OPUS", "opus", "-c:a libopus")
+
+class YouTubeDownloader(QWidget):
+    def __init__(self) -> None:
+        super().__init__()
+        self._message_box_function = None
+        self._message_box_widget = None
+        self._message_box_message = None
+        self._message_box_title = None
+        self.thumbnail_label: Optional[QLabel] = None
+        self.thumbnail_image: Optional[QLabel] = None
+        self.description_text: Optional[QLabel] = None
+        self.duration_text: Optional[QLabel] = None
+        self.title_text: Optional[QLabel] = None
+        self.path: str = ""
+        self.progress_bar: Optional[QProgressBar] = None
+        self.duration_label: Optional[QLabel] = None
+        self.title_label: Optional[QLabel] = None
+        self.format_combo: Optional[QComboBox] = None
+        self.directory_button: Optional[QPushButton] = None
+        self.download_button: Optional[QPushButton] = None
+        self.preview_button: Optional[QPushButton] = None
+        self.url_entry: Optional[QLineEdit] = None
+        self.description_label: Optional[QLabel] = None
+        self.worker: Optional[DownloadWorker] = None
+        self.init_ui()
+
+    def init_ui(self) -> None:
+        self.setGeometry(100, 100, WINDOW_WIDTH, WINDOW_HEIGHT)
+
+        layout = QVBoxLayout()
+
+        button_bar = QHBoxLayout()
+
+        self.url_entry = QLineEdit(self)
+        self.url_entry.setPlaceholderText("Enter YouTube video URL")
+        self.url_entry.setToolTip("Enter the URL of the YouTube video you want to download")
+        self.url_entry.setText("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        self.url_entry.setFixedWidth(700)
+        layout.addWidget(self.url_entry)
+
+        layout.addLayout(button_bar)
+        button_bar.setAlignment(Qt.AlignHCenter)
+        button_bar.setSpacing(50)
+        button_bar.setContentsMargins(0, 0, 0, 0)
+
+        self.preview_button = QPushButton("Preview", self)
+        self.preview_button.setToolTip("Preview the video information before downloading")
+        self.preview_button.clicked.connect(self.preview_video)
+        button_bar.addWidget(self.preview_button)
+
+        self.download_button = QPushButton("Download", self)
+        self.download_button.setToolTip("Download the video")
+        self.download_button.clicked.connect(self.start_download)
+        button_bar.addWidget(self.download_button)
+
+        self.directory_button = QPushButton("Choose Directory", self)
+        self.directory_button.setToolTip("Choose the directory where you want to save the video")
+        self.directory_button.clicked.connect(self.choose_directory)
+        self.directory_button.setFixedWidth(110)
+        button_bar.addWidget(self.directory_button)
+
+        self.format_combo = QComboBox(self)
+        self.format_combo.addItems([formats.name for formats in Formats])
+        self.format_combo.setToolTip("Select the format you want to download the video in")
+        self.format_combo.setFixedWidth(75)
+        button_bar.addWidget(self.format_combo)
+
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setFixedWidth(100)
+        self.progress_bar.setAlignment(Qt.AlignLeft)
+        layout.addWidget(self.progress_bar)
+
+        preview_layout = QHBoxLayout()
+        preview_layout.setSpacing(0)
+        layout.addLayout(preview_layout)
+        text_preview_layout = QVBoxLayout()
+        preview_layout.addLayout(text_preview_layout)
+
+        title = QVBoxLayout()
+        text_preview_layout.addLayout(title)
+        self.title_label = QLabel("Title: ", self)
+        title.addWidget(self.title_label)
+        self.title_text = QLabel(self)
+        self.title_text.setWordWrap(True)
+        title.setContentsMargins(0, 10, 0, 10)
+        title.addWidget(self.title_text)
+
+        duration = QVBoxLayout()
+        text_preview_layout.addLayout(duration)
+        self.duration_label = QLabel("Duration: ", self)
+        duration.addWidget(self.duration_label)
+        self.duration_text = QLabel(self)
+        duration.setContentsMargins(0, 10, 0, 10)
+        duration.addWidget(self.duration_text)
+
+        # Description with scroll area
+        description_container = QVBoxLayout()
+        description_container.setContentsMargins(0, 10, 0, 10)
+        self.description_label = QLabel("Description: ", self)
+        description_container.addWidget(self.description_label)
+        
+        # Create scroll area for description
+        scroll_area = QScrollArea(self)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
+        description_widget = QWidget()
+        description_layout = QVBoxLayout(description_widget)
+        self.description_text = QLabel(self)
+        self.description_text.setWordWrap(True)
+        self.description_text.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        description_layout.addWidget(self.description_text)
+        
+        scroll_area.setWidget(description_widget)
+        scroll_area.setFixedHeight(100) 
+        scroll_area.setFixedWidth(400)
+        description_container.addWidget(scroll_area)
+    
+
+        text_preview_layout.addLayout(description_container)
+
+        image_preview_layout = QVBoxLayout()
+        preview_layout.addLayout(image_preview_layout)
+
+        self.thumbnail_label = QLabel("Thumbnail: ", self)
+        image_preview_layout.addWidget(self.thumbnail_label)
+
+        self.thumbnail_image = QLabel(self)
+        self.thumbnail_image.setPixmap(QPixmap("assets/youtube.png").scaled(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT))
+        self.thumbnail_image.setFixedWidth(THUMBNAIL_WIDTH)
+        self.thumbnail_image.setFixedHeight(THUMBNAIL_HEIGHT)
+        image_preview_layout.addWidget(self.thumbnail_image)
+
+        self.setLayout(layout)
+        self.path = os.getcwd()
+
+    def choose_directory(self) -> None:
+        self.path = QFileDialog.getExistingDirectory(self, "Select Directory")
+
+    def preview_video(self) -> None:
+        self.preview_worker = PreviewWorker(self.url_entry.text())
+        self.preview_worker.finished.connect(self.update_preview)
+        self.preview_worker.error.connect(self.on_preview_error)
+        self.preview_worker.start()
+
+    def update_preview(self, data: VideoPreviewData):
+        self.title_text.setText(data.title)
+        self.duration_text.setText(format_time(data.duration))
+        
+        self.description_text.setText(data.description)
+            
+        byte_array = QByteArray(data.thumbnail_data)
+        buffer = QBuffer(byte_array)
+        buffer.open(QBuffer.ReadOnly)
+        pixmap = QPixmap()
+        pixmap.loadFromData(buffer.data())
+        self.thumbnail_image.setPixmap(pixmap.scaled(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT))
+        
+    def on_preview_error(self, error_message):
+        self.show_message_box(QMessageBox.Critical, self, "Error", error_message)
+
+    def start_download(self) -> None:
+        self.set_widgets_enabled(False)
+        
+        self.worker = DownloadWorker(
+            self.url_entry.text(),
+            self.path,
+            self.format_combo.currentText()
+        )
+        
+        self.worker.finished.connect(self.on_download_complete)
+        self.worker.error.connect(self.on_download_error)
+        self.worker.finished.connect(self.enable_widgets)
+        self.worker.error.connect(self.enable_widgets)
+        
+        # Force platform plugin if needed
+        os.environ["QT_QPA_PLATFORM"] = "xcb"
+        
+        self.worker.start()
+
+    def show_message_box(self, message_type=QMessageBox.Information, parent=None, 
+                    title="", message=""):
+        dialog = MessageBox(
+            parent=self if parent is None else parent,
+            title=title,
+            message=message,
+            message_level=message_type
+        )
+        dialog.exec_()
+
+    def set_widgets_enabled(self, enabled: bool) -> None:
+        for widget in [self.url_entry, self.download_button, self.directory_button,
+                    self.preview_button, self.format_combo]:
+            widget.setEnabled(enabled)
+
+    def on_download_complete(self):
+        self.show_message_box(QMessageBox.Information, self, "Download Complete", 
+                            "The video has been downloaded successfully!")
+
+    def on_download_error(self, error_message):
+        self.show_message_box(QMessageBox.Critical, self, "Error", error_message)
 
 if __name__ == '__main__':
-    if os.name == 'nt':
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('YouTube Downloader')
-    else:
-        pass
-    YoutubeDownloader()
+    app = QApplication(sys.argv)
+    app.setApplicationName("YouTube Downloader")
+    app.setWindowIcon(QIcon("assets/icon.png"))
+    ex = YouTubeDownloader()
+    ex.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
+    ex.show()
+    sys.exit(app.exec_())

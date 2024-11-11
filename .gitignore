@@ -2,7 +2,12 @@
 venv/
 __pycache__/
 *.mp4
+*.avi
+*.mov
+*.mp3
+*.ogg
+*.opus
 *.exe
 *.zip
 .vscode/
-cache/
+makezip.py
