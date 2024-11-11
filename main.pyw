@@ -77,27 +77,25 @@ class PreviewWorker(QThread):
 			self.error.emit(str(e))
 
 class DownloadWorker(QThread):
+	progress_updated = pyqtSignal(int)
+	status_updated = pyqtSignal(str)
+	visibility_changed = pyqtSignal(bool)
 	finished = pyqtSignal()
 	error = pyqtSignal(str)
 	
-	def __init__(self, url: str, path: str, format: Format, progress_bar: QProgressBar, progress_label: QLabel):
+	def __init__(self, url: str, path: str, format: Format):
 		super().__init__()
 		self.url = url
 		self.path = path
 		self.format = format
-		self.progress_bar = progress_bar
-		self.progress_label = progress_label
-		def _on_progress(stream: Stream, chunk: bytes, bytes_remaining: int):
-			self.progress_bar.setValue(int((stream.filesize - bytes_remaining) / stream.filesize * 100))
-		self._on_progress_download = _on_progress
-
-		
+		def on_progress(stream: Stream, _: bytes, bytes_remaining: int):
+			self.progress_updated.emit(int((stream.filesize - bytes_remaining) / stream.filesize * 100))
+		self._on_progress_download = on_progress
 
 	def run(self):
-		self.progress_bar.setVisible(True)
-		self.progress_label.setVisible(True)
-		self.progress_label.setText("Downloading video...")
-		self.progress_bar.setValue(0)
+		self.status_updated.emit("Downloading video...")
+		self.visibility_changed.emit(True)
+		self.progress_updated.emit(0)
 		try:
 			video = YouTube(self.url, on_progress_callback=self._on_progress_download)
 			stream = video.streams.filter(progressive=True, file_extension='mp4').first()
@@ -113,24 +111,23 @@ class DownloadWorker(QThread):
 			self.finished.emit()
 		except Exception as e:
 			self.error.emit(str(e))
+		finally:
+			self.progress_updated.emit(0)
+			self.status_updated.emit("Download complete !")
+			self.visibility_changed.emit(False)
 
 	def convert_video(self, name: str, input_data: bytes, output_format: Format) -> None:
 		output_file = f"{name}.{output_format}"
-		self.progress_label.setText(f"Converting to {output_format}...")
-		self.progress_bar.setValue(0)
+		self.status_updated.emit(f"Converting to {output_format}...")
+		self.progress_updated.emit(0)
 		try:
 			process = FFmpeg().input("pipe:0").output(output_file)
 			@process.on('progress')
 			def on_progress(progress: Progress):
-				self.progress_bar.setValue(int(progress.size/len(input_data)*100))
+				self.progress_updated.emit(int(progress.size/len(input_data)*100))
 			process.execute(input_data)
 		except Exception as e:
 			self.error.emit(f"Conversion failed: {str(e)}")
-		finally:
-			self.progress_label.setText("Conversion complete")
-			self.progress_bar.setValue(0)
-			self.progress_label.setVisible(False)
-			self.progress_bar.setVisible(False)
 
 class MessageBox(QDialog):
 	def __init__(self, parent=None, title="", message="", message_level=QMessageBox.Information):
@@ -354,6 +351,7 @@ class YouTubeDownloader(QWidget):
 		image_preview_layout.addWidget(self.thumbnail_image)
 
 		self.setLayout(layout)
+		self.make_label_selectable(self)
 		self.path = os.getcwd()
 
 	def choose_directory(self) -> None:
@@ -387,15 +385,21 @@ class YouTubeDownloader(QWidget):
 		self.worker = DownloadWorker(
 			self.url_entry.text(),
 			self.path,
-			self.format_combo.currentText(),
-			self.progress_bar,
-			self.status_label
+			self.format_combo.currentText()
 		)
+
+		def set_progress_visible(visible: bool) -> None:
+			self.progress_bar.setVisible(visible)
+			self.status_label.setVisible(visible)
 		
 		self.worker.finished.connect(self.on_download_complete)
 		self.worker.error.connect(self.on_download_error)
 		self.worker.finished.connect(lambda: self.set_widgets_enabled(True))
 		self.worker.error.connect(lambda: self.set_widgets_enabled(True))
+		self.worker.progress_updated.connect(self.progress_bar.setValue)
+		self.worker.status_updated.connect(self.status_label.setText)
+		self.worker.visibility_changed.connect(set_progress_visible)
+		self.worker.start()
 		
 		# Force platform plugin if needed
 		os.environ["QT_QPA_PLATFORM"] = "xcb"
@@ -423,6 +427,15 @@ class YouTubeDownloader(QWidget):
 
 	def on_download_error(self, error_message):
 		self.show_message_box(QMessageBox.Critical, self, "Error", error_message)
+
+	def make_label_selectable(self, widget: QWidget) -> None:
+		# Si on a un label dont le parent n'est pas un bouton, on le rend sélectionnable
+		if isinstance(widget, QLabel) and not isinstance(widget.parent(), QPushButton):
+			widget.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
+			widget.setCursor(Qt.CursorShape.IBeamCursor)
+		for child in widget.children():
+			self.make_label_selectable(child)
+		
 
 if __name__ == '__main__':
 	app = QApplication(sys.argv)
