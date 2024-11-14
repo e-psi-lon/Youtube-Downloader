@@ -9,10 +9,10 @@ from typing import Optional
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QLineEdit, QFileDialog, \
 	QMessageBox, QProgressBar, QComboBox, QHBoxLayout, QScrollArea, QDialog, QStyle
 from PyQt5.QtGui import QPixmap, QIcon
-from PyQt5.QtCore import Qt, QByteArray, QBuffer, QThread, pyqtSignal
-from pytubefix import YouTube, Stream
+from PyQt5.QtCore import Qt, QByteArray, QBuffer, QThread, QObject, pyqtSignal
+from pytubefix import YouTube, Stream  # type: ignore
 import requests
-from ffmpeg import Progress, FFmpeg
+from ffmpeg import Progress, FFmpeg  # type: ignore
 
 WINDOW_WIDTH = 800
 WINDOW_HEIGHT = 400
@@ -59,11 +59,11 @@ class PreviewWorker(QThread):
 	finished = pyqtSignal(VideoPreviewData)
 	error = pyqtSignal(str)
 	
-	def __init__(self, url):
+	def __init__(self, url: str) -> None:
 		super().__init__()
 		self.url = url
 		
-	def run(self):
+	def run(self) -> None:
 		try:
 			video = YouTube(self.url)
 			response = requests.get(video.thumbnail_url)
@@ -84,16 +84,16 @@ class DownloadWorker(QThread):
 	finished = pyqtSignal()
 	error = pyqtSignal(str)
 	
-	def __init__(self, url: str, path: str, format: Format):
+	def __init__(self, url: str, path: str, format: Format) -> None:
 		super().__init__()
 		self.url = url
 		self.path = path
 		self.format = format
-		def on_progress(stream: Stream, _: bytes, bytes_remaining: int):
+		def on_progress(stream: Stream, _: bytes, bytes_remaining: int) -> None:
 			self.progress_updated.emit(int((stream.filesize - bytes_remaining) / stream.filesize * 100))
 		self._on_progress_download = on_progress
 
-	def run(self):
+	def run(self) -> None:
 		self.status_updated.emit("Downloading video...")
 		self.visibility_changed.emit(True)
 		self.progress_updated.emit(0)
@@ -105,7 +105,7 @@ class DownloadWorker(QThread):
 			stream.stream_to_buffer(buffer)
 			buffer.seek(0)
 			if self.format != "MP4":
-				self.convert_video(video.title, buffer.getvalue(), Formats[self.format].value)
+				self.convert_video(video.title, buffer.getvalue(), Formats[self.format.name].value)
 			else:
 				with open(video_path, "wb") as file:
 					file.write(buffer.getvalue())
@@ -124,14 +124,19 @@ class DownloadWorker(QThread):
 		try:
 			process = FFmpeg().input("pipe:0").output(output_file)
 			@process.on('progress')
-			def on_progress(progress: Progress):
+			def on_progress(progress: Progress) -> None:
 				self.progress_updated.emit(int(progress.size/len(input_data)*100))
 			process.execute(input_data)
 		except Exception as e:
 			self.error.emit(f"Conversion failed: {str(e)}")
 
 class MessageBox(QDialog):
-	def __init__(self, parent=None, title="", message="", message_level=QMessageBox.Information):
+	def __init__(self, 
+			  parent: Optional[QWidget] = None, 
+			  title: str = "", 
+			  message: str = "", 
+			  message_level: QMessageBox.Icon = QMessageBox.Information
+			) -> None:
 		super().__init__(parent)
 		self.setWindowTitle(title)
 		self.setFixedSize(300, 100)
@@ -160,7 +165,7 @@ class MessageBox(QDialog):
 		
 		self.setLayout(layout)
 	
-	def _get_icon(self, message_level):
+	def _get_icon(self, message_level: QMessageBox.Icon) -> QIcon:
 		style = self.style()
 		match message_level:
 			case QMessageBox.Information:
@@ -172,7 +177,7 @@ class MessageBox(QDialog):
 			case QMessageBox.Question:
 				return style.standardIcon(QStyle.SP_MessageBoxQuestion)
 			case _:
-				return None
+				raise ValueError("Invalid message level")
 
 class Formats(Enum):
 	MP4 = Format("MP4", "mp4", "-c:v libx264 -c:a aac")
@@ -185,27 +190,23 @@ class Formats(Enum):
 class YouTubeDownloader(QWidget):
 	def __init__(self) -> None:
 		super().__init__()
-		self._message_box_function = None
-		self._message_box_widget = None
-		self._message_box_message = None
-		self._message_box_title = None
-		self.thumbnail_label: Optional[QLabel] = None
-		self.thumbnail_image: Optional[QLabel] = None
-		self.description_text: Optional[QLabel] = None
-		self.duration_text: Optional[QLabel] = None
-		self.title_text: Optional[QLabel] = None
-		self.path: str = ""
-		self.progress_bar: Optional[QProgressBar] = None
-		self.status_label: Optional[QLabel] = None
-		self.duration_label: Optional[QLabel] = None
-		self.title_label: Optional[QLabel] = None
-		self.format_combo: Optional[QComboBox] = None
-		self.directory_button: Optional[QPushButton] = None
-		self.download_button: Optional[QPushButton] = None
-		self.preview_button: Optional[QPushButton] = None
-		self.url_entry: Optional[QLineEdit] = None
-		self.description_label: Optional[QLabel] = None
-		self.worker: Optional[DownloadWorker] = None
+		self.path: str = os.getcwd()
+		self.thumbnail_label: QLabel
+		self.thumbnail_image: QLabel
+		self.description_text: QLabel
+		self.duration_text: QLabel
+		self.title_text: QLabel
+		self.progress_bar: QProgressBar
+		self.status_label: QLabel
+		self.duration_label: QLabel
+		self.title_label: QLabel
+		self.format_combo: QComboBox
+		self.directory_button: QPushButton
+		self.download_button: QPushButton
+		self.preview_button: QPushButton
+		self.url_entry: QLineEdit
+		self.description_label: QLabel
+		self.worker: DownloadWorker
 		self.init_ui()
 
 	def init_ui(self) -> None:
@@ -353,7 +354,6 @@ class YouTubeDownloader(QWidget):
 
 		self.setLayout(layout)
 		self.make_label_selectable(self)
-		self.path = os.getcwd()
 
 	def choose_directory(self) -> None:
 		self.path = QFileDialog.getExistingDirectory(self, "Select Directory")
@@ -364,7 +364,7 @@ class YouTubeDownloader(QWidget):
 		self.preview_worker.error.connect(self.on_preview_error)
 		self.preview_worker.start()
 
-	def update_preview(self, data: VideoPreviewData):
+	def update_preview(self, data: VideoPreviewData) -> None:
 		self.title_text.setText(data.title)
 		self.duration_text.setText(format_time(data.duration))
 		
@@ -377,7 +377,7 @@ class YouTubeDownloader(QWidget):
 		pixmap.loadFromData(buffer.data())
 		self.thumbnail_image.setPixmap(pixmap.scaled(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT))
 		
-	def on_preview_error(self, error_message):
+	def on_preview_error(self, error_message: str) -> None:
 		self.show_message_box(QMessageBox.Critical, self, "Error", error_message)
 
 	def start_download(self) -> None:
@@ -386,7 +386,7 @@ class YouTubeDownloader(QWidget):
 		self.worker = DownloadWorker(
 			self.url_entry.text(),
 			self.path,
-			self.format_combo.currentText()
+			Formats[self.format_combo.currentText()].value
 		)
 
 		def set_progress_visible(visible: bool) -> None:
@@ -404,8 +404,12 @@ class YouTubeDownloader(QWidget):
 		
 		self.worker.start()
 
-	def show_message_box(self, message_type=QMessageBox.Information, parent=None, 
-					title="", message=""):
+	def show_message_box(self, 
+					  message_type: QMessageBox.Icon = QMessageBox.Information,
+					  parent: Optional[QWidget] = None,
+					  title: str= "", 
+					  message: str =""
+					) -> None:
 		dialog = MessageBox(
 			parent=self if parent is None else parent,
 			title=title,
@@ -419,14 +423,14 @@ class YouTubeDownloader(QWidget):
 					self.preview_button, self.format_combo]:
 			widget.setEnabled(enabled)
 
-	def on_download_complete(self):
+	def on_download_complete(self) -> None:
 		self.show_message_box(QMessageBox.Information, self, "Download Complete", 
 							"The video has been downloaded successfully!")
 
-	def on_download_error(self, error_message):
+	def on_download_error(self, error_message: str) -> None:
 		self.show_message_box(QMessageBox.Critical, self, "Error", error_message)
 
-	def make_label_selectable(self, widget: QWidget) -> None:
+	def make_label_selectable(self, widget: QWidget | QObject) -> None:
 		# Si on a un label dont le parent n'est pas un bouton, on le rend sélectionnable
 		if isinstance(widget, QLabel) and not isinstance(widget.parent(), QPushButton):
 			widget.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
