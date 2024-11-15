@@ -84,11 +84,11 @@ class DownloadWorker(QThread):
 	finished = pyqtSignal()
 	error = pyqtSignal(str)
 	
-	def __init__(self, url: str, path: str, format: Format) -> None:
+	def __init__(self, url: str, path: str, file_format: Format) -> None:
 		super().__init__()
 		self.url = url
 		self.path = path
-		self.format = format
+		self.format = file_format
 		def on_progress(stream: Stream, _: bytes, bytes_remaining: int) -> None:
 			self.progress_updated.emit(int((stream.filesize - bytes_remaining) / stream.filesize * 100))
 		self._on_progress_download = on_progress
@@ -191,22 +191,23 @@ class YouTubeDownloader(QWidget):
 	def __init__(self) -> None:
 		super().__init__()
 		self.path: str = os.getcwd()
-		self.thumbnail_label: QLabel
-		self.thumbnail_image: QLabel
-		self.description_text: QLabel
-		self.duration_text: QLabel
-		self.title_text: QLabel
-		self.progress_bar: QProgressBar
-		self.status_label: QLabel
-		self.duration_label: QLabel
-		self.title_label: QLabel
-		self.format_combo: QComboBox
-		self.directory_button: QPushButton
-		self.download_button: QPushButton
-		self.preview_button: QPushButton
-		self.url_entry: QLineEdit
-		self.description_label: QLabel
-		self.worker: DownloadWorker
+		self.thumbnail_label: QLabel = QLabel("Thumbnail: ", self)
+		self.thumbnail_image: QLabel = QLabel(self)
+		self.description_text: QLabel = QLabel(self)
+		self.duration_text: QLabel = QLabel(self)
+		self.title_text: QLabel = QLabel(self)
+		self.progress_bar: QProgressBar = QProgressBar(self)
+		self.status_label: QLabel = QLabel("Ready", self)
+		self.duration_label: QLabel = QLabel("Duration: ", self)
+		self.title_label: QLabel = QLabel("Title: ", self)
+		self.format_combo: QComboBox = QComboBox(self)
+		self.directory_button: QPushButton = QPushButton("Choose Directory", self)
+		self.download_button: QPushButton = QPushButton("Download", self)
+		self.preview_button: QPushButton = QPushButton("Preview", self)
+		self.url_entry: QLineEdit = QLineEdit(self)
+		self.description_label: QLabel = QLabel("Description: ", self)
+		self.worker: Optional[DownloadWorker] = None
+		self.preview_worker: Optional[PreviewWorker] = None
 		self.init_ui()
 
 	def init_ui(self) -> None:
@@ -215,8 +216,6 @@ class YouTubeDownloader(QWidget):
 		layout = QVBoxLayout()
 
 		button_bar = QHBoxLayout()
-
-		self.url_entry = QLineEdit(self)
 		self.url_entry.setPlaceholderText("Enter YouTube video URL")
 		self.url_entry.setToolTip("Enter the URL of the YouTube video you want to download")
 		self.url_entry.setText("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
@@ -228,23 +227,19 @@ class YouTubeDownloader(QWidget):
 		button_bar.setSpacing(50)
 		button_bar.setContentsMargins(0, 0, 0, 0)
 
-		self.preview_button = QPushButton("Preview", self)
 		self.preview_button.setToolTip("Preview the video information before downloading")
 		self.preview_button.clicked.connect(self.preview_video)
 		button_bar.addWidget(self.preview_button)
 
-		self.download_button = QPushButton("Download", self)
 		self.download_button.setToolTip("Download the video")
 		self.download_button.clicked.connect(self.start_download)
 		button_bar.addWidget(self.download_button)
 
-		self.directory_button = QPushButton("Choose Directory", self)
 		self.directory_button.setToolTip("Choose the directory where you want to save the video")
 		self.directory_button.clicked.connect(self.choose_directory)
 		self.directory_button.setFixedWidth(110)
 		button_bar.addWidget(self.directory_button)
 
-		self.format_combo = QComboBox(self)
 		self.format_combo.addItems([formats.name for formats in Formats])
 		self.format_combo.setToolTip("Select the format you want to download the video in")
 		self.format_combo.setFixedWidth(75)
@@ -252,11 +247,9 @@ class YouTubeDownloader(QWidget):
 
 		progress_layout = QVBoxLayout()
 	
-		self.status_label = QLabel("Ready")
 		progress_layout.addWidget(self.status_label)
 		self.status_label.setVisible(False)
 		
-		self.progress_bar = QProgressBar()
 		self.progress_bar.setMinimum(0)
 		self.progress_bar.setMaximum(100)
 		self.progress_bar.setValue(0)
@@ -276,7 +269,6 @@ class YouTubeDownloader(QWidget):
 
 		title = QVBoxLayout()
 		text_preview_layout.addLayout(title)
-		self.title_label = QLabel("Title: ", self)
 		title.addWidget(self.title_label)
 		self.title_text = QLabel(self)
 		self.title_text.setWordWrap(True)
@@ -285,7 +277,6 @@ class YouTubeDownloader(QWidget):
 
 		duration = QVBoxLayout()
 		text_preview_layout.addLayout(duration)
-		self.duration_label = QLabel("Duration: ", self)
 		duration.addWidget(self.duration_label)
 		self.duration_text = QLabel(self)
 		duration.setContentsMargins(0, 10, 0, 10)
@@ -294,7 +285,6 @@ class YouTubeDownloader(QWidget):
 		# Description with scroll area
 		description_container = QVBoxLayout()
 		description_container.setContentsMargins(0, 10, 0, 10)
-		self.description_label = QLabel("Description: ", self)
 		description_container.addWidget(self.description_label)
 		
 		# Create scroll area for description
