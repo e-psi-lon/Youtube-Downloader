@@ -21,6 +21,20 @@ THUMBNAIL_HEIGHT = 210
 DESCRIPTION_MAX_LENGTH = 100
 
 def format_time(seconds: int) -> str:
+	"""
+	Converts a time duration from seconds into a human-readable string format.
+
+	Parameters
+	----------
+	seconds : int
+		The time duration in seconds.
+
+	Returns
+	-------
+		str
+		    A string representing the time duration in days, hours, minutes, and seconds.
+			 The format will include only the non-zero time units, e.g., "1 day 2 hours 3 minutes 4 seconds".
+	"""
 	days = seconds // (24 * 3600)
 	seconds %= (24 * 3600)
 	hours = seconds // 3600
@@ -41,6 +55,18 @@ def format_time(seconds: int) -> str:
 
 @dataclass
 class Format:
+	"""
+	Represents a video format with its extension and FFmpeg arguments.
+
+	Attributes
+	----------
+	name : str
+		The name of the format.
+	extension : str
+		The file extension of the format.
+	ffmpeg_args : str
+		The FFmpeg arguments used to convert the video to this format.
+	"""
 	name: str
 	extension: str
 	ffmpeg_args: str
@@ -50,12 +76,34 @@ class Format:
 
 @dataclass
 class VideoPreviewData:
+	"""
+	Represents the data of a YouTube video preview.
+
+	Attributes
+	----------
+	title : str
+		The title of the video.
+	duration : int
+		The duration of the video in seconds.
+	description : str
+		The description of the video.
+	thumbnail_data : bytes
+		The binary data of the video thumbnail image.
+	"""
 	title: str
 	duration: int
 	description: str
 	thumbnail_data: bytes
 
 class PreviewWorker(QThread):
+	"""
+	A worker thread that retrieves the preview data of a YouTube video.
+
+	Attributes
+	----------
+	url : str
+		The URL of the YouTube video.
+	"""
 	finished = pyqtSignal(VideoPreviewData)
 	error = pyqtSignal(str)
 	
@@ -78,6 +126,18 @@ class PreviewWorker(QThread):
 			self.error.emit(str(e))
 
 class DownloadWorker(QThread):
+	"""
+	A worker thread that downloads a YouTube video and optionally converts it to a different format.
+
+	Attributes
+	----------
+	url : str
+		The URL of the YouTube video.
+	path : str
+		The path where the video will be saved.
+	format : Format
+		The format in which the video will be downloaded.
+	"""
 	progress_updated = pyqtSignal(int)
 	status_updated = pyqtSignal(str)
 	visibility_changed = pyqtSignal(bool)
@@ -118,6 +178,18 @@ class DownloadWorker(QThread):
 			self.visibility_changed.emit(False)
 
 	def convert_video(self, name: str, input_data: bytes, output_format: Format) -> None:
+		"""
+		Converts the video to the specified format using FFmpeg.
+
+		Parameters
+		----------
+		name : str
+			The name of the video file.
+		input_data : bytes
+			The binary data of the video file.
+		output_format : Format
+			The format to which the video will be converted.
+		"""
 		output_file = f"{name}.{output_format}"
 		self.status_updated.emit(f"Converting to {output_format}...")
 		self.progress_updated.emit(0)
@@ -131,6 +203,20 @@ class DownloadWorker(QThread):
 			self.error.emit(f"Conversion failed: {str(e)}")
 
 class MessageBox(QDialog):
+	"""
+	A simple message box dialog with an icon, title, and message.
+
+	Attributes
+	----------
+	parent : Optional[QWidget]
+		The parent widget of the dialog.
+	title : str
+		The title of the dialog.
+	message : str
+		The message text of the dialog.
+	message_level : QMessageBox.Icon
+		The icon level of the message dialog.
+	"""
 	def __init__(self, 
 			  parent: Optional[QWidget] = None, 
 			  title: str = "", 
@@ -156,7 +242,7 @@ class MessageBox(QDialog):
 		button_layout.addStretch()
 
 		ok_button = QPushButton("OK")
-		ok_button.setMaximumWidth(100)  # Adjust the width as needed
+		ok_button.setMaximumWidth(100)
 		ok_button.clicked.connect(self.accept)
 		button_layout.addWidget(ok_button)
 		
@@ -180,6 +266,9 @@ class MessageBox(QDialog):
 				raise ValueError("Invalid message level")
 
 class Formats(Enum):
+	"""
+	An enumeration of video formats with their extension and FFmpeg arguments.
+	"""
 	MP4 = Format("MP4", "mp4", "-c:v libx264 -c:a aac")
 	AVI = Format("AVI", "avi", "-c:v libxvid -c:a mp3")
 	MOV = Format("MOV", "mov", "-c:v libx264 -c:a aac")
@@ -188,6 +277,10 @@ class Formats(Enum):
 	OPUS = Format("OPUS", "opus", "-c:a libopus")
 
 class YouTubeDownloader(QWidget):
+	"""
+	Main class of the application that provides a GUI for downloading YouTube videos
+	in multiple formats and displaying video information.
+	"""
 	def __init__(self) -> None:
 		super().__init__()
 		self.path: str = os.getcwd()
@@ -421,7 +514,14 @@ class YouTubeDownloader(QWidget):
 		self.show_message_box(QMessageBox.Critical, self, "Error", error_message)
 
 	def make_label_selectable(self, widget: QWidget | QObject) -> None:
-		# Si on a un label dont le parent n'est pas un bouton, on le rend sélectionnable
+		"""
+		Makes the text of a QLabel widget selectable by mouse and keyboard.
+
+		Parameters
+		----------
+		widget : QWidget | QObject
+			The widget whose text will be made selectable.
+		"""
 		if isinstance(widget, QLabel) and not isinstance(widget.parent(), QPushButton):
 			widget.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
 			widget.setCursor(Qt.CursorShape.IBeamCursor)
