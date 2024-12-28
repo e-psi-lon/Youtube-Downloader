@@ -20,6 +20,7 @@ THUMBNAIL_WIDTH = 300
 THUMBNAIL_HEIGHT = 210
 DESCRIPTION_MAX_LENGTH = 100
 
+
 def format_time(seconds: int) -> str:
 	"""
 	Converts a time duration from seconds into a human-readable string format.
@@ -430,7 +431,7 @@ class YouTubeDownloader(QWidget):
 		image_preview_layout.addWidget(self.thumbnail_label)
 
 		self.thumbnail_image = QLabel(self)
-		self.thumbnail_image.setPixmap(QPixmap("assets/youtube.png").scaled(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT))
+		self.thumbnail_image.setPixmap(QPixmap("youtube_downloader/assets/youtube.png").scaled(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT))
 		self.thumbnail_image.setFixedWidth(THUMBNAIL_WIDTH)
 		self.thumbnail_image.setFixedHeight(THUMBNAIL_HEIGHT)
 		image_preview_layout.addWidget(self.thumbnail_image)
@@ -530,13 +531,22 @@ class YouTubeDownloader(QWidget):
 		
 
 def main() -> int:
-	app = QApplication(sys.argv)
-	app.setApplicationName("YouTube Downloader")
-	app.setWindowIcon(QIcon("assets/icon.png"))
-	ex = YouTubeDownloader()
-	ex.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
-	return app.exec()
-
+	try:
+		app = QApplication(sys.argv)
+		app.setApplicationName("YouTube Downloader")
+		app.setWindowIcon(QIcon("youtube_downloader/assets/icon.png"))
+		ex = YouTubeDownloader()
+		ex.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
+		global _app, _ex
+		_app = app
+		_ex = ex
+		ex.show()
+		return app.exec()
+	except Exception as e:
+		print(f"An error occurred: {e}")
+		import traceback
+		traceback.print_exc()
+		return 1
 
 if __name__ == '__main__':
 	sys.exit(main())

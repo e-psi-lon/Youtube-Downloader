@@ -23,6 +23,10 @@ dev = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-
 [project.gui-scripts]
 youtube-downloader = "youtube_downloader.main:main"
+
+[tool.hatch.build]
+include = [
+    "youtube_downloader/**"
+]
