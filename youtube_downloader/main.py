@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from enum import Enum
 from io import BytesIO
 from typing import Optional
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QLineEdit, QFileDialog, \
+from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QLineEdit, QFileDialog, \
 	QMessageBox, QProgressBar, QComboBox, QHBoxLayout, QScrollArea, QDialog, QStyle
-from PyQt5.QtGui import QPixmap, QIcon
-from PyQt5.QtCore import Qt, QByteArray, QBuffer, QThread, QObject, pyqtSignal
+from PySide6.QtGui import QPixmap, QIcon
+from PySide6.QtCore import Qt, QByteArray, QBuffer, QThread, QObject, Signal
 from pytubefix import YouTube, Stream  # type: ignore
 import requests
 from ffmpeg import Progress, FFmpeg  # type: ignore
@@ -104,8 +104,8 @@ class PreviewWorker(QThread):
 	url : str
 		The URL of the YouTube video.
 	"""
-	finished = pyqtSignal(VideoPreviewData)
-	error = pyqtSignal(str)
+	finished = Signal(VideoPreviewData)
+	error = Signal(str)
 	
 	def __init__(self, url: str) -> None:
 		super().__init__()
@@ -138,11 +138,11 @@ class DownloadWorker(QThread):
 	format : Format
 		The format in which the video will be downloaded.
 	"""
-	progress_updated = pyqtSignal(int)
-	status_updated = pyqtSignal(str)
-	visibility_changed = pyqtSignal(bool)
-	finished = pyqtSignal()
-	error = pyqtSignal(str)
+	progress_updated = Signal(int)
+	status_updated = Signal(str)
+	visibility_changed = Signal(bool)
+	finished = Signal()
+	error = Signal(str)
 	
 	def __init__(self, url: str, path: str, file_format: Format) -> None:
 		super().__init__()
@@ -165,7 +165,7 @@ class DownloadWorker(QThread):
 			stream.stream_to_buffer(buffer)
 			buffer.seek(0)
 			if self.format != "MP4":
-				self.convert_video(video.title, buffer.getvalue(), Formats[self.format.name].value)
+				self.convert_video(video.title, buffer.getvalue(), Formats[self.format.name].value, self.path)
 			else:
 				with open(video_path, "wb") as file:
 					file.write(buffer.getvalue())
@@ -177,7 +177,7 @@ class DownloadWorker(QThread):
 			self.status_updated.emit("Download complete !")
 			self.visibility_changed.emit(False)
 
-	def convert_video(self, name: str, input_data: bytes, output_format: Format) -> None:
+	def convert_video(self, name: str, input_data: bytes, output_format: Format, path: str) -> None:
 		"""
 		Converts the video to the specified format using FFmpeg.
 
@@ -190,7 +190,7 @@ class DownloadWorker(QThread):
 		output_format : Format
 			The format to which the video will be converted.
 		"""
-		output_file = f"{name}.{output_format}"
+		output_file = os.path.join(path, f"{name}.{output_format.extension}")
 		self.status_updated.emit(f"Converting to {output_format}...")
 		self.progress_updated.emit(0)
 		try:
@@ -221,7 +221,7 @@ class MessageBox(QDialog):
 			  parent: Optional[QWidget] = None, 
 			  title: str = "", 
 			  message: str = "", 
-			  message_level: QMessageBox.Icon = QMessageBox.Information
+			  message_level: QMessageBox.Icon = QMessageBox.Icon.Information
 			) -> None:
 		super().__init__(parent)
 		self.setWindowTitle(title)
@@ -254,14 +254,14 @@ class MessageBox(QDialog):
 	def _get_icon(self, message_level: QMessageBox.Icon) -> QIcon:
 		style = self.style()
 		match message_level:
-			case QMessageBox.Information:
-				return style.standardIcon(QStyle.SP_MessageBoxInformation)
-			case QMessageBox.Warning:
-				return style.standardIcon(QStyle.SP_MessageBoxWarning)
-			case QMessageBox.Critical:
-				return style.standardIcon(QStyle.SP_MessageBoxCritical)
-			case QMessageBox.Question:
-				return style.standardIcon(QStyle.SP_MessageBoxQuestion)
+			case QMessageBox.Icon.Information:
+				return style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation)
+			case QMessageBox.Icon.Warning:
+				return style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxWarning)
+			case QMessageBox.Icon.Critical:
+				return style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxCritical)
+			case QMessageBox.Icon.Question:
+				return style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxQuestion)
 			case _:
 				raise ValueError("Invalid message level")
 
@@ -316,7 +316,7 @@ class YouTubeDownloader(QWidget):
 		layout.addWidget(self.url_entry)
 
 		layout.addLayout(button_bar)
-		button_bar.setAlignment(Qt.AlignHCenter)
+		button_bar.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 		button_bar.setSpacing(50)
 		button_bar.setContentsMargins(0, 0, 0, 0)
 
@@ -383,8 +383,8 @@ class YouTubeDownloader(QWidget):
 		# Create scroll area for description
 		scroll_area = QScrollArea(self)
 		scroll_area.setWidgetResizable(True)
-		scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-		scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+		scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+		scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 		scroll_area.setStyleSheet("""
 			QScrollArea {
 				background-color: #3d3d3d;
@@ -412,7 +412,7 @@ class YouTubeDownloader(QWidget):
 		description_layout = QVBoxLayout(description_widget)
 		self.description_text = QLabel(self)
 		self.description_text.setWordWrap(True)
-		self.description_text.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+		self.description_text.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
 		description_layout.addWidget(self.description_text)
 		
 		scroll_area.setWidget(description_widget)
@@ -455,13 +455,13 @@ class YouTubeDownloader(QWidget):
 			
 		byte_array = QByteArray(data.thumbnail_data)
 		buffer = QBuffer(byte_array)
-		buffer.open(QBuffer.ReadOnly)
+		buffer.open(QBuffer.OpenModeFlag.ReadOnly)
 		pixmap = QPixmap()
 		pixmap.loadFromData(buffer.data())
 		self.thumbnail_image.setPixmap(pixmap.scaled(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT))
 		
 	def on_preview_error(self, error_message: str) -> None:
-		self.show_message_box(QMessageBox.Critical, self, "Error", error_message)
+		self.show_message_box(QMessageBox.Icon.Critical, self, "Error", error_message)
 
 	def start_download(self) -> None:
 		self.set_widgets_enabled(False)
@@ -488,7 +488,7 @@ class YouTubeDownloader(QWidget):
 		self.worker.start()
 
 	def show_message_box(self, 
-					  message_type: QMessageBox.Icon = QMessageBox.Information,
+					  message_type: QMessageBox.Icon = QMessageBox.Icon.Information,
 					  parent: Optional[QWidget] = None,
 					  title: str= "", 
 					  message: str =""
@@ -499,7 +499,7 @@ class YouTubeDownloader(QWidget):
 			message=message,
 			message_level=message_type
 		)
-		dialog.exec_()
+		dialog.exec()
 
 	def set_widgets_enabled(self, enabled: bool) -> None:
 		for widget in [self.url_entry, self.download_button, self.directory_button,
@@ -507,11 +507,11 @@ class YouTubeDownloader(QWidget):
 			widget.setEnabled(enabled)
 
 	def on_download_complete(self) -> None:
-		self.show_message_box(QMessageBox.Information, self, "Download Complete", 
+		self.show_message_box(QMessageBox.Icon.Information, self, "Download Complete", 
 							"The video has been downloaded successfully!")
 
 	def on_download_error(self, error_message: str) -> None:
-		self.show_message_box(QMessageBox.Critical, self, "Error", error_message)
+		self.show_message_box(QMessageBox.Icon.Critical, self, "Error", error_message)
 
 	def make_label_selectable(self, widget: QWidget | QObject) -> None:
 		"""
@@ -523,17 +523,20 @@ class YouTubeDownloader(QWidget):
 			The widget whose text will be made selectable.
 		"""
 		if isinstance(widget, QLabel) and not isinstance(widget.parent(), QPushButton):
-			widget.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard)
+			widget.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.TextSelectableByKeyboard)
 			widget.setCursor(Qt.CursorShape.IBeamCursor)
 		for child in widget.children():
 			self.make_label_selectable(child)
 		
 
-if __name__ == '__main__':
+def main() -> int:
 	app = QApplication(sys.argv)
 	app.setApplicationName("YouTube Downloader")
 	app.setWindowIcon(QIcon("assets/icon.png"))
 	ex = YouTubeDownloader()
 	ex.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
-	ex.show()
-	sys.exit(app.exec_())
+	return app.exec()
+
+
+if __name__ == '__main__':
+	sys.exit(main())

@@ -11,3 +11,4 @@ __pycache__/
 *.zip
 .vscode/
 makezip.py
+dist/

@@ -14,10 +14,22 @@ Download YouTube videos with a GUI interface, support for multiple formats (MP4,
 
 ## Installation
 
-1. Clone the repository
-2. Install required dependencies:
+1. Clone the repository:
 ```sh
-pip install -r requirements.txt
+git clone https://github.com/e-psi-lon/Youtube-Downloader.git
+cd youtube-downloader
+```
+
+2. Choose your installation:
+
+For basic usage:
+```sh
+pip install .
+```
+
+For development:
+```sh
+pip install -e ".[dev]"
 ```
 
 ## Features
@@ -54,6 +66,6 @@ python main.pyw
 
 ## Dependencies
 - pytubefix: YouTube video downloading
-- PyQt5: GUI framework
+- PySide6: GUI framework
 - python-ffmpeg: Video/audio conversion
 - requests: HTTP requests for thumbnails

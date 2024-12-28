@@ -1,0 +1,28 @@
+[project]
+name = "YouTube-Downloader"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [
+    { name = "e-psi-lon", email = "theg41g@gmail.com" },
+]
+dependencies = [
+    "pyside6>=6.8.1,!=6.8.1.1",
+    "python-ffmpeg>=2.0.12",
+    "pytubefix>=8.8.4",
+    "requests>=2.32.3",
+]
+
+[dependency-groups]
+dev = [
+    "pyside6-stubs>=6.4.2.0",
+    "types-requests>=2.32.0.20241016",
+]
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+[project.gui-scripts]
+youtube-downloader = "youtube_downloader.main:main"
