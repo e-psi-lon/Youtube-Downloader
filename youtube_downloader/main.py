@@ -165,17 +165,17 @@ class DownloadWorker(QThread):
 			buffer = BytesIO()
 			stream.stream_to_buffer(buffer)
 			buffer.seek(0)
-			if self.format != "MP4":
+			if self.format.extension != "mp4":
 				self.convert_video(video.title, buffer.getvalue(), Formats[self.format.name].value, self.path)
 			else:
 				with open(video_path, "wb") as file:
 					file.write(buffer.getvalue())
+			self.progress_updated.emit(0)
 			self.finished.emit()
 		except Exception as e:
 			self.error.emit(str(e))
 		finally:
-			self.progress_updated.emit(0)
-			self.status_updated.emit("Download complete !")
+			self.status_updated.emit("Download complete!")
 			self.visibility_changed.emit(False)
 
 	def convert_video(self, name: str, input_data: bytes, output_format: Format, path: str) -> None:
@@ -264,7 +264,7 @@ class MessageBox(QDialog):
 			case QMessageBox.Icon.Question:
 				return style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxQuestion)
 			case _:
-				raise ValueError("Invalid message level")
+				return style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxNoIcon)
 
 class Formats(Enum):
 	"""
@@ -470,7 +470,7 @@ class YouTubeDownloader(QWidget):
 		self.worker = DownloadWorker(
 			self.url_entry.text(),
 			self.path,
-			Formats[self.format_combo.currentText()].value
+			Formats[self.format_combo.currentText()]
 		)
 
 		def set_progress_visible(visible: bool) -> None:
@@ -486,7 +486,6 @@ class YouTubeDownloader(QWidget):
 		self.worker.visibility_changed.connect(set_progress_visible)
 		self.worker.start()
 		
-		self.worker.start()
 
 	def show_message_box(self, 
 					  message_type: QMessageBox.Icon = QMessageBox.Icon.Information,
@@ -531,7 +530,17 @@ class YouTubeDownloader(QWidget):
 		
 
 def main() -> int:
+	"""
+	The main function that initializes and runs the YouTube Downloader application.
+
+	Returns
+	-------
+	int
+		The exit status code of the application.
+	"""
 	try:
+		import logging
+		logging.basicConfig(filename='error.log', level=logging.ERROR)
 		app = QApplication(sys.argv)
 		app.setApplicationName("YouTube Downloader")
 		app.setWindowIcon(QIcon("youtube_downloader/assets/icon.png"))
@@ -543,9 +552,8 @@ def main() -> int:
 		ex.show()
 		return app.exec()
 	except Exception as e:
-		print(f"An error occurred: {e}")
-		import traceback
-		traceback.print_exc()
+		logging.error(f"An error occurred: {e}")
+		MessageBox(title="Error", message="An unexpected error occurred. Please try again.", message_level=QMessageBox.Icon.Critical).exec()
 		return 1
 
 if __name__ == '__main__':
