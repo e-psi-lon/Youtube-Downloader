@@ -1,71 +1,53 @@
-Here's the revised README section:
-
 # YouTube Downloader
 
-A simple desktop application to download YouTube videos in various formats using PyQt5.
+A graphical application for downloading YouTube content in multiple formats.
 
-## TL;DR
-Download YouTube videos with a GUI interface, support for multiple formats (MP4, AVI, MOV, MP3, OGG, OPUS), and video preview functionality.
+## Overview
+YouTube Downloader provides a GUI for downloading YouTube videos and audio tracks. It supports various output formats and offers preview functionality for video details.
 
-## Prerequisites
+## Requirements
 
-- Python 3.7+
-- FFmpeg installed on your system
+- Python 3.11 or higher
+- FFmpeg (must be installed separately)
+- Internet connection
 
 ## Installation
 
-1. Clone the repository:
-```sh
-git clone https://github.com/e-psi-lon/Youtube-Downloader.git
-cd youtube-downloader
+1. Clone and install using pip:
+```
+pip install git+https://github.com/e-psi-lon/Youtube-Downloader.git
+```
+Or with pipx for isolated installation:
+```
+pipx install git+https://github.com/e-psi-lon/Youtube-Downloader.git
 ```
 
-2. Choose your installation:
+## Key Features
 
-For basic usage:
-```sh
-pip install .
-```
-
-For development:
-```sh
-pip install -e ".[dev]"
-```
-
-## Features
-
-- Download YouTube videos in multiple formats:
+- Multi-format Support:
   - Video: MP4, AVI, MOV
   - Audio: MP3, OGG, OPUS
-- Preview video details before downloading:
-  - Thumbnail
-  - Title
-  - Duration
-  - Description
-- Progress bar for download tracking
-- Custom save location selection
-- Clean and intuitive interface
+- Content Preview:
+  - Video thumbnail
+  - Title and duration
+  - Full description
+- Real-time Progress Tracking
+- Customizable Save Location
 
 ## Usage
 
-1. Run the application:
-```sh
-python main.pyw
+After installation, simply run:
+```bash
+youtube-downloader
 ```
 
-2. Enter a YouTube URL in the input field
-3. Click "Preview" to see video details
-4. Select desired format from the dropdown menu
-5. Choose download directory (optional)
-6. Click "Download" to start downloading
+## Technical Details
+Built with:
+- Python 3.11
+- pytubefix
+- FFmpeg
 
-## Default Settings
+## Support
+For issues or feature requests, visit our [GitHub repository](https://github.com/e-psi-lon/Youtube-Downloader/issues).
 
-- Download location: Application's current directory
-- Default video format: MP4
 
-## Dependencies
-- pytubefix: YouTube video downloading
-- PySide6: GUI framework
-- python-ffmpeg: Video/audio conversion
-- requests: HTTP requests for thumbnails
