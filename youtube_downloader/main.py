@@ -7,15 +7,13 @@ from enum import Enum
 from io import BytesIO
 from typing import Optional
 from PySide6.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QLabel, QLineEdit, QFileDialog, \
-	QMessageBox, QProgressBar, QComboBox, QHBoxLayout, QScrollArea, QDialog, QStyle
+	QMessageBox, QProgressBar, QComboBox, QHBoxLayout, QScrollArea, QDialog, QStyle, QSizePolicy
 from PySide6.QtGui import QPixmap, QIcon
 from PySide6.QtCore import Qt, QByteArray, QBuffer, QThread, QObject, Signal
 from pytubefix import YouTube, Stream  # type: ignore
 import requests
 from ffmpeg import Progress, FFmpeg  # type: ignore
 
-WINDOW_WIDTH = 800
-WINDOW_HEIGHT = 400
 THUMBNAIL_WIDTH = 300
 THUMBNAIL_HEIGHT = 210
 DESCRIPTION_MAX_LENGTH = 100
@@ -285,12 +283,13 @@ class YouTubeDownloader(QWidget):
 	def __init__(self) -> None:
 		super().__init__()
 		self.path: str = os.getcwd()
-		self.thumbnail_label: QLabel = QLabel("Thumbnail: ", self)
+		self.thumbnail_label: QLabel = QLabel(self)
 		self.thumbnail_image: QLabel = QLabel(self)
 		self.description_text: QLabel = QLabel(self)
 		self.duration_text: QLabel = QLabel(self)
 		self.title_text: QLabel = QLabel(self)
 		self.progress_bar: QProgressBar = QProgressBar(self)
+		self.progress_bar.setVisible(False)
 		self.status_label: QLabel = QLabel("Ready", self)
 		self.duration_label: QLabel = QLabel("Duration: ", self)
 		self.title_label: QLabel = QLabel("Title: ", self)
@@ -305,16 +304,18 @@ class YouTubeDownloader(QWidget):
 		self.init_ui()
 
 	def init_ui(self) -> None:
-		self.setGeometry(100, 100, WINDOW_WIDTH, WINDOW_HEIGHT)
+		self.setMinimumSize(800, 400)
 
 		layout = QVBoxLayout()
+		layout.setSpacing(10)  # Added spacing control
 
 		button_bar = QHBoxLayout()
 		self.url_entry.setPlaceholderText("Enter YouTube video URL")
 		self.url_entry.setToolTip("Enter the URL of the YouTube video you want to download")
 		self.url_entry.setText("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-		self.url_entry.setFixedWidth(700)
-		layout.addWidget(self.url_entry)
+		url_layout = QHBoxLayout()
+		url_layout.addWidget(self.url_entry)
+		layout.addLayout(url_layout)
 
 		layout.addLayout(button_bar)
 		button_bar.setAlignment(Qt.AlignmentFlag.AlignHCenter)
@@ -350,42 +351,50 @@ class YouTubeDownloader(QWidget):
 		self.progress_bar.setTextVisible(True)
 		self.progress_bar.setAlignment(Qt.AlignmentFlag.AlignCenter)
 		self.progress_bar.setVisible(False)
-		self.progress_bar.setFixedWidth(400)
+		self.progress_bar.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+		progress_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 		progress_layout.addWidget(self.progress_bar)
 		
 		layout.addLayout(progress_layout)
 
 		preview_layout = QHBoxLayout()
-		preview_layout.setSpacing(0)
+		preview_layout.setSpacing(10)  # Reduced spacing
 		layout.addLayout(preview_layout)
+		
 		text_preview_layout = QVBoxLayout()
+		text_preview_layout.setSpacing(0)  # Remove spacing between elements
 		preview_layout.addLayout(text_preview_layout)
 
+		# Title section
 		title = QVBoxLayout()
 		text_preview_layout.addLayout(title)
 		title.addWidget(self.title_label)
 		self.title_text = QLabel(self)
 		self.title_text.setWordWrap(True)
-		title.setContentsMargins(0, 10, 0, 10)
+		title.setContentsMargins(0, 0, 0, 0)  # Remove margins
 		title.addWidget(self.title_text)
 
+		# Duration section
 		duration = QVBoxLayout()
 		text_preview_layout.addLayout(duration)
 		duration.addWidget(self.duration_label)
 		self.duration_text = QLabel(self)
-		duration.setContentsMargins(0, 10, 0, 10)
+		duration.setContentsMargins(0, 0, 0, 0)  # Remove margins
 		duration.addWidget(self.duration_text)
 
-		# Description with scroll area
+		# Description section
 		description_container = QVBoxLayout()
-		description_container.setContentsMargins(0, 10, 0, 10)
+		description_container.setContentsMargins(0, 2, 0, 0)  # Tiny top margin only
+		description_container.setSpacing(1)  # Minimal spacing
 		description_container.addWidget(self.description_label)
 		
-		# Create scroll area for description
 		scroll_area = QScrollArea(self)
 		scroll_area.setWidgetResizable(True)
 		scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 		scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+		scroll_area.setMinimumHeight(100)  # Minimum height to ensure visibility
+		scroll_area.setMaximumHeight(200)  # Maximum height to prevent excessive growth
+		scroll_area.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)  # Allow vertical growth
 		scroll_area.setStyleSheet("""
 			QScrollArea {
 				background-color: #3d3d3d;
@@ -411,30 +420,36 @@ class YouTubeDownloader(QWidget):
 		
 		description_widget = QWidget()
 		description_layout = QVBoxLayout(description_widget)
+		description_layout.setContentsMargins(5, 5, 5, 5)  # Added small padding
 		self.description_text = QLabel(self)
 		self.description_text.setWordWrap(True)
 		self.description_text.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
 		description_layout.addWidget(self.description_text)
 		
 		scroll_area.setWidget(description_widget)
-		scroll_area.setFixedHeight(100) 
-		scroll_area.setFixedWidth(400)
 		description_container.addWidget(scroll_area)
-	
 
 		text_preview_layout.addLayout(description_container)
 
+		# Thumbnail section
 		image_preview_layout = QVBoxLayout()
+		image_preview_layout.setContentsMargins(20, 0, 0, 0)
+		image_preview_layout.setAlignment(Qt.AlignmentFlag.AlignBottom)  # Align to bottom
 		preview_layout.addLayout(image_preview_layout)
 
-		self.thumbnail_label = QLabel("Thumbnail: ", self)
+		self.thumbnail_label = QLabel("Thumbnail:", self)  # Removed extra space
 		image_preview_layout.addWidget(self.thumbnail_label)
 
 		self.thumbnail_image = QLabel(self)
-		self.thumbnail_image.setPixmap(QPixmap("youtube_downloader/assets/youtube.png").scaled(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT))
-		self.thumbnail_image.setFixedWidth(THUMBNAIL_WIDTH)
-		self.thumbnail_image.setFixedHeight(THUMBNAIL_HEIGHT)
+		self.thumbnail_image.setPixmap(QPixmap("youtube_downloader/assets/youtube.png").scaled(
+			THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, Qt.AspectRatioMode.KeepAspectRatio))
+		self.thumbnail_image.setFixedSize(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT)
+		self.thumbnail_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
 		image_preview_layout.addWidget(self.thumbnail_image)
+
+		# Set stretch factors to make description fill space
+		preview_layout.setStretch(0, 2)  # Text section takes 2/3 of space
+		preview_layout.setStretch(1, 1)  # Thumbnail section takes 1/3 of space
 
 		self.setLayout(layout)
 		self.make_label_selectable(self)
@@ -548,7 +563,6 @@ def main() -> int:
 		app.setApplicationName("YouTube Downloader")
 		app.setWindowIcon(QIcon("youtube_downloader/assets/icon.png"))
 		ex = YouTubeDownloader()
-		ex.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
 		global _app, _ex
 		_app = app
 		_ex = ex
