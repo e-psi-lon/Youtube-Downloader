@@ -264,7 +264,7 @@ class MessageBox(QDialog):
 			case QMessageBox.Icon.Question:
 				return style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxQuestion)
 			case _:
-				return style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxNoIcon)
+				return style.standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation)
 
 class Formats(Enum):
 	"""
@@ -470,7 +470,7 @@ class YouTubeDownloader(QWidget):
 		self.worker = DownloadWorker(
 			self.url_entry.text(),
 			self.path,
-			Formats[self.format_combo.currentText()]
+			Formats[self.format_combo.currentText()].value
 		)
 
 		def set_progress_visible(visible: bool) -> None:
@@ -528,6 +528,9 @@ class YouTubeDownloader(QWidget):
 		for child in widget.children():
 			self.make_label_selectable(child)
 		
+
+_app: QApplication
+_ex: YouTubeDownloader
 
 def main() -> int:
 	"""
