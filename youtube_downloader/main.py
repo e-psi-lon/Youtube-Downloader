@@ -2,8 +2,7 @@
 # -*- coding: utf-8 -*-
 import sys
 import os
-from typing import Optional
-from PySide6.QtWidgets import QPushButton, QLabel, QFileDialog, \
+from PySide6.QtWidgets import QPushButton, QLabel, \
 	QMessageBox
 from PySide6.QtGui import QIcon
 from PySide6.QtCore import Qt, QObject
@@ -80,71 +79,48 @@ class YouTubeDownloader(QWidget):
 		self.setMinimumSize(800, 400)
 		
 	def connect_signals(self):
+		# Control Section Signals
 		self.control_section.preview_clicked.connect(self.preview_video)
-		self.control_section.download_clicked.connect(self.start_download)
-		# self.control_section.directory_changed.connect(self.update_directory)
+		self.control_section.download_clicked.connect(self.handle_download)
+		self.control_section.directory_changed.connect(self.handle_directory_change)
 
+		# Connect Progress Section to state changes
+		self.state.state_changed.connect(self.update_ui_state)
 
-	def choose_directory(self) -> None:
-		self.state.update(path=QFileDialog.getExistingDirectory(self, "Select Directory"))
+	def handle_download(self, url: str, format_name: str) -> None:
+		self.state.update(
+			url=url,
+			format=format_name,
+			is_downloading=True
+		)
+		self.start_download()
+
+	def handle_directory_change(self, path: str) -> None:
+		self.state.update(path=path)
+
+	def update_ui_state(self) -> None:
+		# Update UI based on state changes
+		self.progress_section.setVisible(self.state.is_downloading)
+		self.control_section.setEnabled(not self.state.is_downloading)
 
 	def preview_video(self) -> None:
-		self.preview_worker = PreviewWorker(self.control_section.url_entry.text())
-		self.preview_worker.finished.connect(self.update_preview)
-		self.preview_worker.error.connect(self.on_preview_error)
+		self.preview_worker = PreviewWorker(self.state.url)
+		# Preview Worker Signals
+		self.preview_worker.finished.connect(self.preview_section.update_preview)
+		self.preview_worker.error.connect(lambda msg: self.show_message_box(
+			QMessageBox.Icon.Critical, 
+			self, 
+			"Preview Error", 
+			msg
+		))
 		self.preview_worker.start()
 
-	def on_preview_error(self, error_message: str) -> None:
-		self.show_message_box(QMessageBox.Icon.Critical, self, "Error", error_message)
-
 	def start_download(self) -> None:
-		self.set_widgets_enabled(False)
-		
 		self.worker = DownloadWorker(
-			self.url_entry.text(),
-			self.path,
-			Formats[self.format_combo.currentText()].value
+			self.state.url,
+			self.state.path,
+			Formats[self.state.format].value
 		)
-
-		def set_progress_visible(visible: bool) -> None:
-			self.progress_bar.setVisible(visible)
-			self.status_label.setVisible(visible)
-		
-		self.worker.finished.connect(self.on_download_complete)
-		self.worker.error.connect(self.on_download_error)
-		self.worker.finished.connect(lambda: self.set_widgets_enabled(True))
-		self.worker.error.connect(lambda: self.set_widgets_enabled(True))
-		self.worker.progress_updated.connect(self.progress_bar.setValue)
-		self.worker.status_updated.connect(self.status_label.setText)
-		self.worker.visibility_changed.connect(set_progress_visible)
-		self.worker.start()
-		
-
-	def show_message_box(self, 
-					message_type: QMessageBox.Icon = QMessageBox.Icon.Information,
-					parent: Optional[QWidget] = None,
-					title: str= "", 
-					message: str =""
-					) -> None:
-		dialog = MessageBox(
-			parent=self if parent is None else parent,
-			title=title,
-			message=message,
-			message_level=message_type
-		)
-		dialog.exec()
-
-	def set_widgets_enabled(self, enabled: bool) -> None:
-		for widget in [self.url_entry, self.download_button, self.directory_button,
-					self.preview_button, self.format_combo]:
-			widget.setEnabled(enabled)
-
-	def on_download_complete(self) -> None:
-		self.show_message_box(QMessageBox.Icon.Information, self, "Download Complete", 
-							"The video has been downloaded successfully!")
-
-	def on_download_error(self, error_message: str) -> None:
-		self.show_message_box(QMessageBox.Icon.Critical, self, "Error", error_message)
 
 	def make_label_selectable(self, widget: QWidget | QObject) -> None:
 		"""

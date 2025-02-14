@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QPushButton, QLineEdit, 
-							QComboBox)
+							QComboBox, QVBoxLayout)
 from PySide6.QtCore import Signal, Qt
 from ..core.constants import DEFAULT_URL, Formats
 
@@ -16,19 +16,22 @@ class ControlSection(QWidget):
 		self.directory_button = QPushButton("Choose Directory")
 		self.format_combo = QComboBox()
 		self.init_ui()
-		self.connect_signals()
 		
 	def init_ui(self):
+		layout = QVBoxLayout()
+		
 		button_bar = QHBoxLayout()
 		self.url_entry.setPlaceholderText("Enter YouTube video URL")
 		self.url_entry.setToolTip("Enter the URL of the YouTube video you want to download")
 		self.url_entry.setText(DEFAULT_URL)
 		url_layout = QHBoxLayout()
 		url_layout.addWidget(self.url_entry)
+		layout.addLayout(url_layout)
 
 		button_bar.setAlignment(Qt.AlignmentFlag.AlignHCenter)
 		button_bar.setSpacing(50)
 		button_bar.setContentsMargins(0, 0, 0, 0)
+		layout.addLayout(button_bar)
 
 		self.preview_button.setToolTip("Preview the video information before downloading")
 		button_bar.addWidget(self.preview_button)
@@ -45,8 +48,4 @@ class ControlSection(QWidget):
 		self.format_combo.setFixedWidth(75)
 		button_bar.addWidget(self.format_combo)
 
-	
-	def connect_signals(self):
-		self.preview_button.clicked.connect(self.preview_video)
-		self.directory_button.clicked.connect(self.choose_directory)
-		self.download_button.clicked.connect(self.start_download)
+		self.setLayout(layout)
